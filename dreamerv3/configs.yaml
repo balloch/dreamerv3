@@ -4,9 +4,12 @@ defaults:
   method: name
   task: dummy_disc
   logdir: /dev/null
+  avoid_logdir: /dev/null
+  investigate_logdir: /dev/null
   eval_dir: ''
   filter: 'score|length|fps|ratio|train/.*_loss$|train/rand/.*/mean'
   tensorboard_videos: True
+
 
   replay:
     size: 5e6
@@ -61,6 +64,8 @@ defaults:
     log_video_streams: 4
     log_episode_timeout: 60
     from_checkpoint: ''
+    mode: ''
+
     actor_addr: 'tcp://localhost:{auto}'
     replay_addr: 'tcp://localhost:{auto}'
     logger_addr: 'tcp://localhost:{auto}'
@@ -95,10 +100,12 @@ defaults:
   replay_length_eval: 0
   replay_context: 1
   random_agent: False
-  loss_scales: {dec_cnn: 1.0, dec_mlp: 1.0, reward: 1.0, cont: 1.0, dyn: 1.0, rep: 0.1, actor: 1.0, critic: 1.0, replay_critic: 0.3}
+  loss_scales: {dec_cnn: 1.0, dec_mlp: 1.0, investigate_reward: 1.0, avoid_reward: 1.0, reward: 1.0, cont: 1.0, dyn: 1.0, rep: 0.1, actor: 1.0, critic: 1.0, replay_critic: 0.3,
+    avoid_actor: 1.0, avoid_critic: 1.0, avoid_replay_critic: 0.3, investigate_actor: 1.0, investigate_critic: 1.0, investigate_replay_critic: 0.3}
   opt: {scaler: rms, lr: 4e-5, eps: 1e-20, momentum: True, wd: 0.0, warmup: 1000, globclip: 0.0, agc: 0.3, beta1: 0.9, beta2: 0.999, details: False, pmin: 1e-3, anneal: 0, schedule: constant}
   separate_lrs: False
-  lrs: {dec: 1e-4, enc: 1e-4, dyn: 1e-4, rew: 1e-4, con: 1e-4, actor: 3e-5, critic: 3e-5}
+  lrs: {dec: 1e-4, enc: 1e-4, dyn: 1e-4,  rew: 1e-4, avoid_rew: 1e-4, investigate_rew: 1e-4, con: 1e-4, actor: 3e-5, avoid_actor: 3e-5,
+  investigate_actor: 3e-5, critic: 3e-5, avoid_critic: 3e-5, investigate_critic: 3e-5}
   ac_grads: none
   reset_context: 0.0
   replay_critic_loss: True

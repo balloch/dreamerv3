@@ -46,12 +46,26 @@ class ActionRepeat(base.Wrapper):
     if action['reset']:
       return self.env.step(action)
     reward = 0.0
+    avoid_reward = 0.0
+    investigate_reward = 0.0
     for _ in range(self._repeat):
       obs = self.env.step(action)
+      #Added skills
+      if 'avoid_reward' in obs.keys():
+        avoid_reward += obs['avoid_reward']
+      if 'investigate_reward' in obs.keys():
+        investigate_reward += obs['investigate_reward']
+      #### 
       reward += obs['reward']
       if obs['is_last'] or obs['is_terminal']:
         break
     obs['reward'] = np.float32(reward)
+    #Added skills
+    if 'avoid_reward' in obs.keys():
+      obs['avoid_reward'] = np.float32(avoid_reward)
+    if 'investigate_reward' in obs.keys():
+      obs['investigate_reward'] = np.float32(investigate_reward)
+    ####
     return obs
 
 
@@ -98,7 +112,7 @@ class ExpandScalars(base.Wrapper):
     self._obs_expanded = []
     self._obs_space = {}
     for key, space in self.env.obs_space.items():
-      if space.shape == () and key != 'reward' and not space.discrete:
+      if space.shape == () and key != 'reward' and key != 'avoid_reward' and key != 'investigate_reward' and not space.discrete:
         space = spacelib.Space(space.dtype, (1,), space.low, space.high)
         self._obs_expanded.append(key)
       self._obs_space[key] = space

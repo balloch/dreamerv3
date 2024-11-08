@@ -66,9 +66,11 @@ def eval_only(make_agent, make_env, make_logger, args):
   checkpoint = embodied.Checkpoint()
   checkpoint.agent = agent
   checkpoint.load(args.from_checkpoint, keys=['agent'])
-
+  driver.reset(agent.init_policy)
   print('Start evaluation')
-  policy = lambda *args: agent.policy(*args, mode='eval')
+  print(args.mode)
+  policy_mode = args.mode
+  policy = lambda *args: agent.policy(*args, mode=policy_mode)
   driver.reset(agent.init_policy)
   while step < args.steps:
     driver(policy, steps=10)

@@ -88,6 +88,7 @@ class Checkpoint:
       if key.startswith('_'):
         continue
       try:
+        print('Loading: ',key)
         self._values[key].load(data[key])
       except Exception:
         print(f"Error loading '{key}' from checkpoint.")

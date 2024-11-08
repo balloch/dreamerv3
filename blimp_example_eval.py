@@ -9,12 +9,15 @@ warnings.filterwarnings('ignore', '.*truncated to dtype int32.*')
 
 
 def main():
-
+  mode='avoid'
+  check_pt = '/home/general/logdir/20241101T001652-simple-blimp-1/checkpoint.ckpt'
   config = embodied.Config(dreamerv3.Agent.configs['defaults'])
   config = config.update({
       **dreamerv3.Agent.configs['size100m'],#['size50m'],
-      'logdir': f'~/logdir/{embodied.timestamp()}-simple-blimp-1',
+      'logdir': f'~/logdir_{mode}/{embodied.timestamp()}-simple-blimp-1',
       'run.train_ratio': 32,
+      'run.mode': mode,
+      'run.from_checkpoint': check_pt
   })
   ##DEBUGMODE
   #config = config.update({**dreamerv3.Agent.configs['debug'],})
@@ -73,12 +76,11 @@ def main():
       batch_size=config.batch_size,
       batch_length=config.batch_length,
       batch_length_eval=config.batch_length_eval,
-      replay_context=config.replay_context,
+      replay_context=config.replay_context
   )
 
-  embodied.run.train(
+  embodied.run.eval_only(
       bind(make_agent, config),
-      bind(make_replay, config),
       bind(make_env, config),
       bind(make_logger, config), args)
 

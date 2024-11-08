@@ -85,14 +85,8 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
     investigate_reward += reward
     for fire_id, fire_hazard in self._env.base.fire_mgr.items():
           dist = np.linalg.norm(self._env.base.blimp.get_pos() - fire_hazard.get_pos())
-          avoid_reward += .0000001*round(dist,2)
-          investigate_reward -= .0000001*round(dist,2)
-    avoid_reward = round(avoid_reward,7)
-    investigate_reward = round(investigate_reward,7)
-
-    # print('Avoid Reward: ',round(avoid_reward,7))
-    # print('Investigate Reward: ',round(investigate_reward,7))
-    # print('Reward: ',reward)
+          avoid_reward += dist
+          investigate_reward -= dist 
 
     self._done = terminated or truncated
     return self._obs(
@@ -146,5 +140,5 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
     return result
   def _convert(self, space):
     if hasattr(space, 'n'):
-      return embodied.Space(np.int32, (), 0, space.n)
+      return embodied.Space(np.float32, (), 0, space.n)
     return embodied.Space(space.dtype, space.shape, space.low, space.high)
