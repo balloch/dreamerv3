@@ -149,9 +149,12 @@ class Agent(nj.Module):
     scales.update({k: mlp for k in self.dec.veckeys})
     self.scales = scales
 
+  # @property
+  # def policy_keys(self):
+  #   return '/(enc|dyn|actor)/'
   @property
   def policy_keys(self):
-    return '/(enc|dyn|actor)/'
+    return '/(enc|dyn|actor|avoid_actor|investigate_actor)/'
 
   @property
   def aux_spaces(self):

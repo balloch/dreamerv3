@@ -84,6 +84,7 @@ class Checkpoint:
     printing.print_(f'Loading checkpoint: {filename}')
     data = pickle.loads(filename.read('rb'))
     keys = tuple(data.keys() if keys is None else keys)
+    print(keys)
     for key in keys:
       if key.startswith('_'):
         continue
