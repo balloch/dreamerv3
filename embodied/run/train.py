@@ -164,7 +164,7 @@ def train(make_agent, make_replay, make_env, make_logger, args):
     #   should_investigate = embodied.when.Until(step+step_cycle)
     #   should_be_normal = embodied.when.Until(step+(step_cycle*2))
     #   should_avoid = embodied.when.Until(step+(step_cycle*3))
-    driver(policy,episodes=10)
+    driver(policy,episodes=100)
     
     
     if should_eval(step) and len(replay):

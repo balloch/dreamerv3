@@ -9,7 +9,7 @@ warnings.filterwarnings('ignore', '.*truncated to dtype int32.*')
 
 
 def main():
-  mode='avoid'
+  mode='safety_adaptation'
   check_pt = '/home/general/logdir/20241101T001652-simple-blimp-1/checkpoint.ckpt'
   config = embodied.Config(dreamerv3.Agent.configs['defaults'])
   config = config.update({
@@ -64,7 +64,7 @@ def main():
                           'num_fires': 10,
                           'num_balloons': 10
                         }
-    env = Env(dynamics='physics',render_mode='rgb_array',img_size=(64,64),disable_render=False,max_episode_steps=10000,reward_unit=.0001,action_repeat=50)    
+    env = Env(dynamics='physics',render_mode='rgb_array',img_size=(64,64),disable_render=False,max_episode_steps=10000,reward_unit=.0001,action_repeat=20)    
     env = NormalizePoseWrapper(env)
     env = from_gymnasium.FromGymnasium(env)
     env = dreamerv3.wrap_env(env, config)

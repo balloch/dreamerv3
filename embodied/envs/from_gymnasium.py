@@ -45,7 +45,7 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
       spaces = {self._obs_key: self._env.observation_space}
 
     spaces = {k: self._convert(v) for k, v in spaces.items()}
-
+    print(spaces)
     return {
         **spaces,
         'avoid_reward': embodied.Space(np.float32, shape=()),
@@ -71,6 +71,7 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
       # we don't bother setting ._info here because it gets set below, once we
       # take the next .step()
       obs, _ = self._env.reset()
+      print(obs)
       return self._obs(obs, 0.0, 0.0, 0.0, is_first=True)
     if self._act_dict:
       gymnasium_action = cast(V, self._unflatten(action))

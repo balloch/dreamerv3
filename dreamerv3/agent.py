@@ -10,6 +10,7 @@ import ruamel.yaml as yaml
 import torch
 from PIL import Image
 import time 
+import random
 # import os
 # path = ''
 # os.environ['PATH'] += ':'+path
@@ -187,7 +188,7 @@ class Agent(nj.Module):
         'Tracing policy function', color='yellow')
     prevlat, prevact = carry
     obs = self.preprocess(obs)
-    
+    print(obs['sensor'])
     ####USED FOR VLM######
     # if obs['is_first'][0] == False:
     #   print(obs['img'])
@@ -195,25 +196,43 @@ class Agent(nj.Module):
     # time.sleep(10)
     ####END OF VLM CODE######
 
+
     embed = self.enc(obs, bdims=1)
     prevact = jaxutils.onehot_dict(prevact, self.act_space)
     lat, out = self.dyn.observe(
         prevlat, prevact, embed, obs['is_first'], bdims=1)
-    
+   
     outs = {}
     if self.config.replay_context:
       outs.update({k: out[k] for k in self.aux_spaces if k != 'stepid'})
       outs['stoch'] = jnp.argmax(outs['stoch'], -1).astype(jnp.int32)
-
+    #Select the type of actor:
+    random_int = random.randint(1, 10) 
+    novel = False
     if mode == 'avoid': # 0 
       actor = self.avoid_actor(out, bdims=1)
       outs['mode'] = jnp.full_like(outs['stoch'], 0)
     elif mode == 'investigate': # 1
       actor = self.investigate_actor(out, bdims=1)
       outs['mode'] = jnp.full_like(outs['stoch'], 1)
-    else: # 2
+    elif mode == 'safety_adaptation': # Safety Adaptation has two settings.
+      if novel: #ASK VLM
+        outs['mode'] = jnp.full_like(outs['stoch'], 2)
+        actor = self.actor(out, bdims=1)
+      else: # Do normal safety protocols
+        if random_int > 7: # Investigate protocol
+          actor = self.investigate_actor(out, bdims=1)
+          outs['mode'] = jnp.full_like(outs['stoch'], 0)
+        elif random_int < 3 : # Avoid protocol
+          actor = self.avoid_actor(out, bdims=1)
+          outs['mode'] = jnp.full_like(outs['stoch'], 1)
+        else: # No protocol.
+          outs['mode'] = jnp.full_like(outs['stoch'], 2)
+          actor = self.actor(out, bdims=1)
+    else: # 2 No protocol
       outs['mode'] = jnp.full_like(outs['stoch'], 2)
       actor = self.actor(out, bdims=1)
+    #Execute action
     act = sample(actor)
 
     outs['finite'] = {

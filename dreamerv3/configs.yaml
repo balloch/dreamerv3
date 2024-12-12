@@ -108,11 +108,12 @@ defaults:
   investigate_actor: 3e-5, critic: 3e-5, avoid_critic: 3e-5, investigate_critic: 3e-5}
   ac_grads: none
   reset_context: 0.0
-  replay_critic_loss: True
-  replay_critic_grad: True
+  replay_critic_loss: False #True # Geigh: Need to see how to chunk to train other heads.
+  replay_critic_grad: False #True # Geigh: Need to see how to chunk to train other heads.
   replay_critic_bootstrap: imag
   reward_grad: True
   report_openl_context: 8
+  ultra_sonic_backup_policy: True
 
   # World Model
   dyn:
