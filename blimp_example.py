@@ -1,4 +1,6 @@
 import warnings
+import os
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 from functools import partial as bind
 from jax.lib import xla_bridge
 
@@ -58,8 +60,8 @@ def main():
     Env = gym.envs.registration.load_env_creator("blimp_env:FollowTaskEnv")
     Env.reset_options = {
                           'pose': [0, 0, 4, 0, 0, 0],
-                          'num_fires': 10,
-                          'num_balloons': 10
+                          'num_fires': 1,#10,
+                          'num_balloons': 1,#10
                         }
     env = Env(dynamics='physics',render_mode='rgb_array',img_size=(64,64),disable_render=False,max_episode_steps=10000,reward_unit=.0001,action_repeat=50)    
     env = NormalizePoseWrapper(env)

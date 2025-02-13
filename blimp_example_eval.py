@@ -9,8 +9,13 @@ warnings.filterwarnings('ignore', '.*truncated to dtype int32.*')
 
 
 def main():
-  mode='safety_adaptation'
-  check_pt = '/home/general/logdir/20241101T001652-simple-blimp-1/checkpoint.ckpt'
+  #mode='safety_adaptation'
+  mode='investigate'
+  # check_pt = '/home/general/logdir/20241101T001652-simple-blimp-1/checkpoint.ckpt'
+  # check_pt = '/home/general/logdir/20250123T114529-simple-blimp-1/checkpoint.ckpt'
+  #check_pt = '/home/general/logdir/20250123T003907-simple-blimp-1/checkpoint.ckpt'
+  #check_pt = '/home/general/logdir/20250122T195652-simple-blimp-1/checkpoint.ckpt'
+  check_pt = '/home/general/logdir/20250206T094922-simple-blimp-1/checkpoint.ckpt'
   config = embodied.Config(dreamerv3.Agent.configs['defaults'])
   config = config.update({
       **dreamerv3.Agent.configs['size100m'],#['size50m'],
@@ -61,10 +66,10 @@ def main():
     Env = gym.envs.registration.load_env_creator("blimp_env:FollowTaskEnv")
     Env.reset_options = {
                           'pose': [0, 0, 4, 0, 0, 0],
-                          'num_fires': 10,
-                          'num_balloons': 10
+                          'num_fires': 1,#10,
+                          'num_balloons': 1#10
                         }
-    env = Env(dynamics='physics',render_mode='rgb_array',img_size=(64,64),disable_render=False,max_episode_steps=10000,reward_unit=.0001,action_repeat=20)    
+    env = Env(dynamics='physics',render_mode='rgb_array',img_size=(64,64),disable_render=False,max_episode_steps=10000,reward_unit=.0001,action_repeat=50)    
     env = NormalizePoseWrapper(env)
     env = from_gymnasium.FromGymnasium(env)
     env = dreamerv3.wrap_env(env, config)

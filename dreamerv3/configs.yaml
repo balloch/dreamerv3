@@ -44,8 +44,8 @@ defaults:
     script: train
     steps: 1e10
     duration: 0
-    num_envs: 16
-    num_envs_eval: 4
+    num_envs: 16 #16
+    num_envs_eval: 4 #4
     expl_until: 0
     log_every: 120
     save_every: 900
@@ -108,8 +108,8 @@ defaults:
   investigate_actor: 3e-5, critic: 3e-5, avoid_critic: 3e-5, investigate_critic: 3e-5}
   ac_grads: none
   reset_context: 0.0
-  replay_critic_loss: False #True # Geigh: Need to see how to chunk to train other heads.
-  replay_critic_grad: False #True # Geigh: Need to see how to chunk to train other heads.
+  replay_critic_loss: True #True # Geigh: Need to see how to chunk to train other heads.
+  replay_critic_grad: True #True # Geigh: Need to see how to chunk to train other heads.
   replay_critic_bootstrap: imag
   reward_grad: True
   report_openl_context: 8
@@ -129,12 +129,15 @@ defaults:
     simple: {inputs: [deter, stoch], vecdist: symlog_mse, depth: 64, mults: [1, 2, 3, 4, 4], layers: 3, units: 1024, act: silu, norm: rms, outscale: 1.0, winit: normal, outer: True, kernel: 5, minres: 4, block_space: 8, block_fans: False, block_norm: False, hidden_stoch: True, space_hidden: 0}
   rewhead: {layers: 1, units: 1024, act: silu, norm: rms, dist: symexp_twohot, outscale: 0.0, inputs: [deter, stoch], winit: normal, bins: 255, block_fans: False, block_norm: False}
   conhead: {layers: 1, units: 1024, act: silu, norm: rms, dist: binary, outscale: 1.0, inputs: [deter, stoch], winit: normal, block_fans: False, block_norm: False}
+  
   contdisc: True
   rssm_loss: {free: 1.0}
 
   # Actor Critic
   actor: {layers: 3, units: 1024, act: silu, norm: rms, minstd: 0.1, maxstd: 1.0, outscale: 0.01, unimix: 0.01, inputs: [deter, stoch], winit: normal, block_fans: False, block_norm: False}
   critic: {layers: 3, units: 1024, act: silu, norm: rms, dist: symexp_twohot, outscale: 0.0, inputs: [deter, stoch], winit: normal, bins: 255, block_fans: False, block_norm: False}
+  custom_actor: {layers: 3, units: 1024, act: silu, norm: rms, minstd: 0.1, maxstd: 1.0, outscale: 0.01, unimix: 0.01, inputs: [ultra_sonic_sensor], winit: normal, block_fans: False, block_norm: False}
+  custom_critic: {layers: 3, units: 1024, act: silu, norm: rms, dist: symexp_twohot, outscale: 0.0, inputs: [ultra_sonic_sensor], winit: normal, bins: 255, block_fans: False, block_norm: False}
   actor_dist_disc: onehot
   actor_dist_cont: normal
   imag_start: all

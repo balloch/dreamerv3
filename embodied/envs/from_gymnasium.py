@@ -9,11 +9,13 @@
 # - A bunch of minor/irrelevant type checking changes that stopped pyright from
 #   complaining (these have no functional purpose, I'm just a completionist who
 #   doesn't like red squiggles).
+import matplotlib.pyplot as plt
 import functools
 from typing import Any, Generic, TypeVar, Union, cast, Dict
 import embodied
 import gymnasium
 import numpy as np
+import time
 U = TypeVar('U')
 V = TypeVar('V')
 class FromGymnasium(embodied.Env, Generic[U, V]):
@@ -31,6 +33,8 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
     self._done = True
     self._info = None
     self.skill = None
+    self.prev_obs = None
+    self.side = -1
   @property
   def info(self):
     return self._info
@@ -71,7 +75,10 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
       # we don't bother setting ._info here because it gets set below, once we
       # take the next .step()
       obs, _ = self._env.reset()
-      print(obs)
+      self.prev_obs = None
+      # Swap the values of the two keys
+      obs['sensor'], obs['ultra_sonic_sensor'] =  obs['ultra_sonic_sensor'], obs['sensor']
+      # print(obs)
       return self._obs(obs, 0.0, 0.0, 0.0, is_first=True)
     if self._act_dict:
       gymnasium_action = cast(V, self._unflatten(action))
@@ -79,21 +86,88 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
       gymnasium_action = cast(V, action[self._act_key])
     blimp_state = self._env.base.get_blimp_state()
     obs, reward, terminated, truncated, self._info = self._env.step(gymnasium_action)
-    blimp_state = self._env.base.get_blimp_state()
+    self._env.prev_obs = self.prev_obs
+    # Swap the values of the two keys
+    obs['sensor'], obs['ultra_sonic_sensor'] =  obs['ultra_sonic_sensor'], obs['sensor']
+
     investigate_reward = 0.0
     avoid_reward = 0.0
-    avoid_reward += reward
-    investigate_reward += reward
-    for fire_id, fire_hazard in self._env.base.fire_mgr.items():
-          dist = np.linalg.norm(self._env.base.blimp.get_pos() - fire_hazard.get_pos())
-          avoid_reward += .0000001*round(dist,2)
-          investigate_reward -= .0000001*round(dist,2)
-    avoid_reward = round(avoid_reward,7)
-    investigate_reward = round(investigate_reward,7)
+    total_dist = 0.0
+    
+    if self.prev_obs is None:
+      if obs['ultra_sonic_sensor'][1] < obs['ultra_sonic_sensor'][4]: #Checking angle.
+        object_of_interest = obs['ultra_sonic_sensor'][:3]
+        obs['ultra_sonic_sensor'][3:] = obs['ultra_sonic_sensor'][3:]*0.0
+        self.side = 0
+      else:
+        object_of_interest = obs['ultra_sonic_sensor'][3:]
+        obs['ultra_sonic_sensor'][:3] = obs['ultra_sonic_sensor'][:3]*0.0
+        self.side = 1
+    else:
+      if self.side == 0:
+        object_of_interest = obs['ultra_sonic_sensor'][:3]
+        obs['ultra_sonic_sensor'][3:] = obs['ultra_sonic_sensor'][3:]*0.0
+      else:
+        object_of_interest = obs['ultra_sonic_sensor'][3:]
+        obs['ultra_sonic_sensor'][:3] = obs['ultra_sonic_sensor'][:3]*0.0
+    
+    # Extract sensor values
+    x_distance, angle, z_distance = object_of_interest
+    
+    # Reward for reducing the distance to the object (x and z axes combined)
+    distance = (x_distance**2 + z_distance**2)**0.5  # Euclidean distance
 
-    # print('Avoid Reward: ',round(avoid_reward,7))
-    # print('Investigate Reward: ',round(investigate_reward,7))
-    # print('Reward: ',reward)
+    if self.prev_obs is not None:
+        prev_distance = (self.prev_obs[0]**2 + self.prev_obs[2]**2)**0.5
+        distance_change = prev_distance - distance  # Positive if getting closer
+        angle_change = abs(angle) - abs(self.prev_obs[1]) 
+        self.prev_obs = object_of_interest
+    else:
+        self.prev_obs = object_of_interest
+        distance_change = 0  # No previous observation
+        angle_change = 0
+        # print(angle)
+        # print(angle_change)
+        # Penalize large angles (encourage alignment toward the object)
+
+    angle_bonus = angle_change / 180 # Normalize to [0, 1]
+
+    # Calculate total investigate reward
+    investigate_reward = 0
+    investigate_reward += 1 * distance_change  # Strong reward for reducing distance
+    investigate_reward -= .2 * angle_bonus    # Penalize misalignment
+    investigate_reward = max(-5, avoid_reward)
+    # Bonus for being very close to the object
+    investigate_reward = 0
+    if distance < 6:  # Within a threshold (e.g., 0.5 units)
+        investigate_reward = 1#+= 2
+
+    # Penalize being too close to the object
+    proximity_penalty = max(0, 5 - distance)  # Strong penalty if distance < 1
+
+    # Calculate total reward
+    avoid_reward = 0
+    avoid_reward -= 1 * distance_change  # Strong reward for increasing distance
+    avoid_reward -= 5 * proximity_penalty  # Strong penalty for being too close
+    avoid_reward += .2 * angle_bonus        # Bonus for avoiding alignment
+    avoid_reward = min(5, avoid_reward)
+    
+
+    # print(investigate_reward)
+    if reward < -1:
+      investigate_reward = reward
+      avoid_reward = reward
+
+    visualize = False
+    act_taken = f"Action: {action['action']}"
+    if visualize:
+      plt.imshow(obs['img'])
+      plt.title(act_taken)
+      plt.show(block=False)
+      plt.pause(.01)  # Pause to ensure the plot updates
+      time.sleep(.01)
+      plt.clf()  # Clear the plot so that the next image replaces this one
+
 
     self._done = terminated or truncated
     return self._obs(
@@ -113,6 +187,9 @@ class FromGymnasium(embodied.Env, Generic[U, V]):
         is_first=is_first,
         is_last=is_last,
         is_terminal=is_terminal)
+    
+    
+    
     return np_obs
   def render(self):
     image = self._env.render()

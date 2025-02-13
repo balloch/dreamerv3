@@ -34,21 +34,66 @@ def train(make_agent, make_replay, make_env, make_logger, args):
   should_save = embodied.when.Clock(args.save_every)
 
 
+  # @embodied.timer.section('log_step')
+  # def log_step(tran, worker):
+
+  #   episode = episodes[worker]
+  #   episode.add('score', tran['reward'], agg='sum')
+  #   episode.add('length', 1, agg='sum')
+    
+  #   if 'mode' not in tran.keys():
+  #     episode.add('rewards', tran['reward'], agg='stack')
+  #   elif tran['mode'][-1] == 0:
+  #     episode.add('avoid_rewards', tran['avoid_reward'], agg='stack')
+  #   elif tran['mode'][-1] == 1:
+  #     episode.add('investigate_rewards', tran['investigate_reward'], agg='stack')
+  #   else:
+  #     episode.add('rewards', tran['reward'], agg='stack')
+
+  #   if tran['is_first']:
+  #     episode.reset()
+
+  #   if worker < args.log_video_streams:
+  #     for key in args.log_keys_video:
+  #       if key in tran:
+  #         episode.add(f'policy_{key}', tran[key], agg='stack')
+  #   for key, value in tran.items():
+  #     if re.match(args.log_keys_sum, key):
+  #       episode.add(key, value, agg='sum')
+  #     if re.match(args.log_keys_avg, key):
+  #       episode.add(key, value, agg='avg')
+  #     if re.match(args.log_keys_max, key):
+  #       episode.add(key, value, agg='max')
+
+  #   if tran['is_last']:
+  #     result = episode.result()
+  #     logger.add({
+  #         'score': result.pop('score'),
+  #         'length': result.pop('length'),
+  #     }, prefix='episode')
+
+  #     if tran['mode'][-1] == 0:
+  #       avoid_rew = result.pop('avoid_rewards')
+  #       if len(avoid_rew) > 1:
+  #         result['avoid_reward_rate'] = (np.abs(avoid_rew[1:] - avoid_rew[:-1]) >= 0.01).mean()
+  #     elif tran['mode'][-1] == 1:
+  #       investigate_rew = result.pop('investigate_rewards')
+  #       if len(investigate_rew) > 1:
+  #         result['investigate_reward_rate'] = (np.abs(investigate_rew[1:] - investigate_rew[:-1]) >= 0.01).mean()
+  #     else:
+  #       rew = result.pop('rewards')
+  #       if len(rew) > 1:
+  #         result['reward_rate'] = (np.abs(rew[1:] - rew[:-1]) >= 0.01).mean()
+       
+  #     epstats.add(result)
+
   @embodied.timer.section('log_step')
   def log_step(tran, worker):
 
     episode = episodes[worker]
     episode.add('score', tran['reward'], agg='sum')
     episode.add('length', 1, agg='sum')
-    
-    if 'mode' not in tran.keys():
-      episode.add('rewards', tran['reward'], agg='stack')
-    elif tran['mode'][-1] == 0:
-      episode.add('avoid_rewards', tran['avoid_reward'], agg='stack')
-    elif tran['mode'][-1] == 1:
-      episode.add('investigate_rewards', tran['investigate_reward'], agg='stack')
-    else:
-      episode.add('rewards', tran['reward'], agg='stack')
+    episode.add('rewards', tran['reward'], agg='stack')
 
     if tran['is_first']:
       episode.reset()
@@ -71,20 +116,9 @@ def train(make_agent, make_replay, make_env, make_logger, args):
           'score': result.pop('score'),
           'length': result.pop('length'),
       }, prefix='episode')
-
-      if tran['mode'][-1] == 0:
-        avoid_rew = result.pop('avoid_rewards')
-        if len(avoid_rew) > 1:
-          result['avoid_reward_rate'] = (np.abs(avoid_rew[1:] - avoid_rew[:-1]) >= 0.01).mean()
-      elif tran['mode'][-1] == 1:
-        investigate_rew = result.pop('investigate_rewards')
-        if len(investigate_rew) > 1:
-          result['investigate_reward_rate'] = (np.abs(investigate_rew[1:] - investigate_rew[:-1]) >= 0.01).mean()
-      else:
-        rew = result.pop('rewards')
-        if len(rew) > 1:
-          result['reward_rate'] = (np.abs(rew[1:] - rew[:-1]) >= 0.01).mean()
-       
+      rew = result.pop('rewards')
+      if len(rew) > 1:
+        result['reward_rate'] = (np.abs(rew[1:] - rew[:-1]) >= 0.01).mean()
       epstats.add(result)
 
   fns = [bind(make_env, i) for i in range(args.num_envs)]
@@ -133,9 +167,9 @@ def train(make_agent, make_replay, make_env, make_logger, args):
   policy = lambda *args: agent.policy(
       *args, mode='explore' if should_expl(step) else 'train')
   avoid_policy = lambda *args: agent.policy(
-      *args, mode='explore' if should_expl(step) else 'avoid')
+      *args, mode='avoid')
   investigate_policy = lambda *args: agent.policy(
-      *args, mode='explore' if should_expl(step) else 'investigate')
+      *args, mode='investigate')
   #TODO reacts based on environment.
   multi_skill_policy = lambda *args: agent.policy(
       *args, mode='explore' if should_expl(step) else 'train')
@@ -164,16 +198,18 @@ def train(make_agent, make_replay, make_env, make_logger, args):
     #   should_investigate = embodied.when.Until(step+step_cycle)
     #   should_be_normal = embodied.when.Until(step+(step_cycle*2))
     #   should_avoid = embodied.when.Until(step+(step_cycle*3))
-    driver(policy,episodes=100)
     
-    
+    #driver(policy,episodes=2)
+    # driver(avoid_policy, episodes=100)
+    driver(investigate_policy, steps=10)
+
     if should_eval(step) and len(replay):
-      print('Evaluate Avoid')
-      driver(avoid_policy, episodes=100)
-      time.sleep(10)
-      print('Evaluate Investigate')
-      driver(investigate_policy, episodes=100)
-      time.sleep(10)
+      # print('Evaluate Avoid')
+      # driver(avoid_policy, episodes=2)
+      # time.sleep(1)
+      # print('Evaluate Investigate')
+      # driver(investigate_policy, episodes=2)
+      # time.sleep(1)
       mets, _ = agent.report(next(dataset_report), carry_report)
       logger.add(mets, prefix='report')
 

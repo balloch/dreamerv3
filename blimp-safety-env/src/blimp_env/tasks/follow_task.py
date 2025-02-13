@@ -142,8 +142,8 @@ class SensorManager:
             mins.extend(sensor_mins)
             maxes.extend(sensor_maxes)
         sensor_space = gym.spaces.Box(
-            low=np.array(mins),
-            high=np.array(maxes),
+            low=-1001.0,#np.array(mins),
+            high=1001.0,#np.array(maxes),
             shape=(len(mins), ),
             dtype=self.dtype,
         )
@@ -173,7 +173,7 @@ class FollowTaskEnv(IntoTheFireBasicNavEnv):
 
 
     @staticmethod
-    def pprint(obs, action, reward, total_reward, is_terminated, is_truncated, info):
+    def pprint(obs, action, reward, total_reward, total_avoid_reward, total_investigate_reward, is_terminated, is_truncated, info):
         """Pretty-print the environment state to the console."""
         step_num = info['step_num']
         x, y, z = obs["pose"][6:9]
@@ -185,6 +185,8 @@ class FollowTaskEnv(IntoTheFireBasicNavEnv):
         in_fire_zone = info['in_fire_zone']
         in_reward_zone = info['in_reward_zone']
 
+        # print(obs['ultra_sonic_sensor'])
+        print(obs['sensor'])
         data = [
             step_num,
             str(int(action)),
@@ -202,6 +204,8 @@ class FollowTaskEnv(IntoTheFireBasicNavEnv):
             # v_yaw,
             reward,
             total_reward,
+            total_avoid_reward,
+            total_investigate_reward,
             in_fire_zone,
             in_reward_zone,
             num_balloons_collected,
@@ -231,6 +235,8 @@ class FollowTaskEnv(IntoTheFireBasicNavEnv):
             # 'v_yaw',
             'reward',
             'total_reward',
+            'total_avoid',
+            'total_invest',
             'in_fire_zone',
             'in_reward_zone',
             '# collected',
@@ -255,7 +261,7 @@ class FollowTaskEnv(IntoTheFireBasicNavEnv):
 
     def _get_obs(self):
         obs = super()._get_obs()
-        obs["sensor"] = self.base.sensor_mgr.observe(self.base.blimp)
+        obs["sensor"] = self.base.sensor_mgr.observe(self.base.blimp) 
         self._obs = obs
         return obs
     
@@ -263,9 +269,9 @@ class FollowTaskEnv(IntoTheFireBasicNavEnv):
 
 if __name__ == "__main__":
     # Use for manual control
-    #render_mode, disable_render, debug = "human", False, True
+    render_mode, disable_render, debug = "human", False, True
     # Use for RL agent
-    render_mode, disable_render, debug = "rgb_array", False, False
+    # render_mode, disable_render, debug = "rgb_array", False, False
 
     env = FollowTaskEnv(
         render_mode=render_mode,

@@ -6,10 +6,10 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 
 from .. import distr
-from .MobileVLM_main.mobilevlm.model.mobilevlm import load_pretrained_model
-from .MobileVLM_main.mobilevlm.conversation import conv_templates, SeparatorStyle
-from .MobileVLM_main.mobilevlm.utils import disable_torch_init, process_images, tokenizer_image_token, KeywordsStoppingCriteria
-from .MobileVLM_main.mobilevlm.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
+# from .MobileVLM_main.mobilevlm.model.mobilevlm import load_pretrained_model
+# from .MobileVLM_main.mobilevlm.conversation import conv_templates, SeparatorStyle
+# from .MobileVLM_main.mobilevlm.utils import disable_torch_init, process_images, tokenizer_image_token, KeywordsStoppingCriteria
+# from .MobileVLM_main.mobilevlm.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 
 
 
@@ -30,12 +30,13 @@ class Driver:
     self.use_vlm = False
     print(f'VLM in use: {self.use_vlm}')
     if self.use_vlm:  
-      tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, False, False)
-      self.VLM_model = model
-      self.VLM_tokenizer = tokenizer
-      self.image_processor = image_processor
-      self.context_len = context_len
-      self.prompt = prompt_str
+      print('No using VLM')
+      # tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, False, False)
+      # self.VLM_model = model
+      # self.VLM_tokenizer = tokenizer
+      # self.image_processor = image_processor
+      # self.context_len = context_len
+      # self.prompt = prompt_str
     if parallel:
       import multiprocessing as mp
       context = mp.get_context()
@@ -163,49 +164,49 @@ class Driver:
     if self.use_vlm == False:
       return
 
-    #tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.load_8bit, args.load_4bit)
-    conversation_mode = "v1"
-    temperature = 0.2
-    top_p = None
-    num_beams = 1
-    max_new_tokens = 512
+    # #tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.load_8bit, args.load_4bit)
+    # conversation_mode = "v1"
+    # temperature = 0.2
+    # top_p = None
+    # num_beams = 1
+    # max_new_tokens = 512
 
 
-    images = [Image.fromarray(np.clip(255 * obs + .5, 0, 255).astype(np.uint8))]
+    # images = [Image.fromarray(np.clip(255 * obs + .5, 0, 255).astype(np.uint8))]
     
-    images_tensor = process_images(images, self.image_processor, self.VLM_model.config).to(self.VLM_model.device, dtype=torch.float16)
+    # images_tensor = process_images(images, self.image_processor, self.VLM_model.config).to(self.VLM_model.device, dtype=torch.float16)
 
-    conv = conv_templates[conversation_mode].copy()
-    conv.append_message(conv.roles[0], DEFAULT_IMAGE_TOKEN + "\n" + self.prompt)
-    conv.append_message(conv.roles[1], None)
-    prompt = conv.get_prompt()
-    stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
-    # Input
-    input_ids = (tokenizer_image_token(prompt, self.VLM_tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).cuda())
-    stopping_criteria = KeywordsStoppingCriteria([stop_str], self.VLM_tokenizer, input_ids)
-    # Inference
-    with torch.inference_mode():
-        output_ids = self.VLM_model.generate(
-            input_ids,
-            images=images_tensor,
-            do_sample=True if temperature > 0 else False,
-            temperature=temperature,
-            top_p=top_p,
-            num_beams=num_beams,
-            max_new_tokens=max_new_tokens,
-            use_cache=True,
-            stopping_criteria=[stopping_criteria],
-        )
-    # Result-Decode
-    input_token_len = input_ids.shape[1]
-    n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
-    if n_diff_input_output > 0:
-        print(f"[Warning] {n_diff_input_output} output_ids are not the same as the input_ids")
-    outputs = self.VLM_tokenizer.batch_decode(output_ids[:, input_token_len:], skip_special_tokens=True)[0]
-    outputs = outputs.strip()
-    if outputs.endswith(stop_str):
-        outputs = outputs[: -len(stop_str)]
-    print(f"🚀 {self.model_name}: {outputs.strip()}\n")
+    # conv = conv_templates[conversation_mode].copy()
+    # conv.append_message(conv.roles[0], DEFAULT_IMAGE_TOKEN + "\n" + self.prompt)
+    # conv.append_message(conv.roles[1], None)
+    # prompt = conv.get_prompt()
+    # stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
+    # # Input
+    # input_ids = (tokenizer_image_token(prompt, self.VLM_tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).cuda())
+    # stopping_criteria = KeywordsStoppingCriteria([stop_str], self.VLM_tokenizer, input_ids)
+    # # Inference
+    # with torch.inference_mode():
+    #     output_ids = self.VLM_model.generate(
+    #         input_ids,
+    #         images=images_tensor,
+    #         do_sample=True if temperature > 0 else False,
+    #         temperature=temperature,
+    #         top_p=top_p,
+    #         num_beams=num_beams,
+    #         max_new_tokens=max_new_tokens,
+    #         use_cache=True,
+    #         stopping_criteria=[stopping_criteria],
+    #     )
+    # # Result-Decode
+    # input_token_len = input_ids.shape[1]
+    # n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
+    # if n_diff_input_output > 0:
+    #     print(f"[Warning] {n_diff_input_output} output_ids are not the same as the input_ids")
+    # outputs = self.VLM_tokenizer.batch_decode(output_ids[:, input_token_len:], skip_special_tokens=True)[0]
+    # outputs = outputs.strip()
+    # if outputs.endswith(stop_str):
+    #     outputs = outputs[: -len(stop_str)]
+    # print(f"🚀 {self.model_name}: {outputs.strip()}\n")
     
     # font = ImageFont.truetype("Waree-Bold.ttf", 120)
     # draw = ImageDraw.Draw(images[0])

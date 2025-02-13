@@ -84,6 +84,7 @@ class Agent(nj.Module):
     self.avoid_rew = nets.MLP((), **config.rewhead, name='avoid_rew')
     self.investigate_rew = nets.MLP((), **config.rewhead, name='investigate_rew')
     self.con = nets.MLP((), **config.conhead, name='con')
+    self.ultra_sonic_sensor = nets.MLP((6,), **config.rewhead, name='ultra_sonic_sensor')
     # Actor
     kwargs = {}
     kwargs['shape'] = {
@@ -93,8 +94,8 @@ class Agent(nj.Module):
         k: config.actor_dist_disc if v.discrete else config.actor_dist_cont
         for k, v in self.act_space.items()}
     self.actor = nets.MLP(**kwargs, **config.actor, name='actor')
-    self.avoid_actor = nets.MLP(**kwargs, **config.actor, name='avoid_actor')
-    self.investigate_actor = nets.MLP(**kwargs, **config.actor, name='investigate_actor')
+    self.avoid_actor = nets.MLP(**kwargs, **config.custom_actor, name='avoid_actor')
+    self.investigate_actor = nets.MLP(**kwargs, **config.custom_actor, name='investigate_actor')
 
     self.retnorm = jaxutils.Moments(**config.retnorm, name='retnorm')
     self.valnorm = jaxutils.Moments(**config.valnorm, name='valnorm')
@@ -110,18 +111,18 @@ class Agent(nj.Module):
         self.config.slow_critic_update,
         name='updater')
 
-    self.avoid_critic = nets.MLP((), name='avoid_critic', **self.config.critic)
+    self.avoid_critic = nets.MLP((), name='avoid_critic', **self.config.custom_critic)
     self.avoid_slowcritic = nets.MLP(
-        (), name='avoid_slowcritic', **self.config.critic, dtype='float32')
+        (), name='avoid_slowcritic', **self.config.custom_critic, dtype='float32')
     self.avoid_updater = jaxutils.SlowUpdater(
         self.avoid_critic, self.avoid_slowcritic,
         self.config.slow_critic_fraction,
         self.config.slow_critic_update,
         name='avoid_updater')
     
-    self.investigate_critic = nets.MLP((), name='investigate_critic', **self.config.critic)
+    self.investigate_critic = nets.MLP((), name='investigate_critic', **self.config.custom_critic)
     self.investigate_slowcritic = nets.MLP(
-        (), name='investigate_slowcritic', **self.config.critic, dtype='float32')
+        (), name='investigate_slowcritic', **self.config.custom_critic, dtype='float32')
     self.investigate_updater = jaxutils.SlowUpdater(
         self.investigate_critic, self.investigate_slowcritic,
         self.config.slow_critic_fraction,
@@ -142,7 +143,7 @@ class Agent(nj.Module):
     #     self.actor, self.critic]
     self.modules = [
         self.enc, self.dyn, self.dec, self.rew, self.avoid_rew, self.investigate_rew, self.con,
-        self.actor, self.avoid_actor, self.investigate_actor, self.critic, self.avoid_critic, self.investigate_critic]
+        self.actor, self.avoid_actor, self.investigate_actor, self.critic, self.avoid_critic, self.investigate_critic, self.ultra_sonic_sensor]
     scales = self.config.loss_scales.copy()
     cnn = scales.pop('dec_cnn')
     mlp = scales.pop('dec_mlp')
@@ -155,7 +156,7 @@ class Agent(nj.Module):
   #   return '/(enc|dyn|actor)/'
   @property
   def policy_keys(self):
-    return '/(enc|dyn|actor|avoid_actor|investigate_actor)/'
+    return '/(enc|dyn|actor|avoid_actor|investigate_actor|ultra_sonic_sensor)/'
 
   @property
   def aux_spaces(self):
@@ -188,7 +189,7 @@ class Agent(nj.Module):
         'Tracing policy function', color='yellow')
     prevlat, prevact = carry
     obs = self.preprocess(obs)
-    print(obs['sensor'])
+    # print(obs['sensor'])
     ####USED FOR VLM######
     # if obs['is_first'][0] == False:
     #   print(obs['img'])
@@ -210,10 +211,15 @@ class Agent(nj.Module):
     random_int = random.randint(1, 10) 
     novel = False
     if mode == 'avoid': # 0 
-      actor = self.avoid_actor(out, bdims=1)
+      # out_sonic = {'ultra_sonic_sensor': sonic_call}
+      out_sonic = {'ultra_sonic_sensor': obs['ultra_sonic_sensor']}
+      actor = self.avoid_actor(out_sonic,bdims=1)
+      #actor = self.avoid_actor(out, bdims=1)
       outs['mode'] = jnp.full_like(outs['stoch'], 0)
     elif mode == 'investigate': # 1
-      actor = self.investigate_actor(out, bdims=1)
+      # actor = self.investigate_actor(outs, bdims=1)
+      out_sonic = {'ultra_sonic_sensor': obs['ultra_sonic_sensor']}
+      actor = self.investigate_actor(out_sonic, bdims=1)
       outs['mode'] = jnp.full_like(outs['stoch'], 1)
     elif mode == 'safety_adaptation': # Safety Adaptation has two settings.
       if novel: #ASK VLM
@@ -326,12 +332,15 @@ class Agent(nj.Module):
     embed = self.enc(data)
     newlat, outs = self.dyn.observe(prevlat, prevacts, embed, data['is_first'])
     rew_feat = outs if self.config.reward_grad else sg(outs)
+
     dists = dict(
         **self.dec(outs),
         reward=self.rew(rew_feat, training=True),
         avoid_reward=self.avoid_rew(rew_feat, training=True),
         investigate_reward=self.investigate_rew(rew_feat,training=True),
         cont=self.con(outs, training=True))
+    # print(dists)
+        # ultra_sonic_sensor=self.ultra_sonic_sensor(outs,training=True))
     losses = {k: -v.log_prob(f32(data[k])) for k, v in dists.items()}
 
     if self.config.contdisc:
@@ -351,6 +360,15 @@ class Agent(nj.Module):
       act = cast(sample(self.actor(out, bdims=1)))
       return (lat, act), (out, act)
     
+    def imgstep_sensor(carry, _):
+      lat, act = carry
+      lat, out = self.dyn.imagine(lat, act, bdims=1)
+      out['stoch'] = sg(out['stoch'])
+      sonic_call = sg(self.ultra_sonic_sensor(out,bdims=1).mean())
+      out['ultra_sonic_sensor'] = sonic_call
+      act = cast(sample(self.actor(out, bdims=1)))
+      return (lat, act), (out, act)
+    
     # Imagination rollout avoid actor
     def avoid_imgstep(carry, _):
       lat, act = carry
@@ -359,12 +377,32 @@ class Agent(nj.Module):
       act = cast(sample(self.avoid_actor(out, bdims=1)))
       return (lat, act), (out, act)
     
+    def avoid_imgstep_sensor(carry, _):
+      lat, act = carry
+      lat, out = self.dyn.imagine(lat, act, bdims=1)
+      #print(out)
+      sonic_call = sg(self.ultra_sonic_sensor(out,bdims=1).mean())
+      out_sonic = {'ultra_sonic_sensor': sonic_call}
+      act = cast(sample(self.avoid_actor(out_sonic, bdims=1)))
+      out['ultra_sonic_sensor'] = sonic_call
+      return (lat, act), (out, act)
+    
     # Imagination rollout investigate actor
     def investigate_imgstep(carry, _):
       lat, act = carry
       lat, out = self.dyn.imagine(lat, act, bdims=1)
       out['stoch'] = sg(out['stoch'])
       act = cast(sample(self.investigate_actor(out, bdims=1)))
+      return (lat, act), (out, act)
+    
+    # Imagination rollout investigate actor
+    def investigate_imgstep_sensor(carry, _):
+      lat, act = carry
+      lat, out = self.dyn.imagine(lat, act, bdims=1)
+      sonic_call = sg(self.ultra_sonic_sensor(out,bdims=1).mean())
+      out_sonic = {'ultra_sonic_sensor': sonic_call}
+      act = cast(sample(self.investigate_actor(out_sonic, bdims=1)))
+      out['ultra_sonic_sensor'] = sonic_call
       return (lat, act), (out, act)
     
     rew = data['reward']
@@ -402,21 +440,28 @@ class Agent(nj.Module):
           lambda x: x.repeat(N, 0), (avoid_startrew))
       investigate_startrew = treemap(
           lambda x: x.repeat(N, 0), (investigate_startrew))
-      
+    # print(startout)
     startact = cast(sample(self.actor(startout, bdims=1)))
-    avoid_startact = cast(sample(self.avoid_actor(startout, bdims=1)))
-    investigate_startact = cast(sample(self.investigate_actor(startout, bdims=1)))
+    # avoid_startact = cast(sample(self.avoid_actor(startout, bdims=1)))
+    # {'tensor': inputs}
+    sonic_start = sg(self.ultra_sonic_sensor(startout,bdims=1).mean())
+    custom_start_out = {'ultra_sonic_sensor': sonic_start}
+    startout['ultra_sonic_sensor'] = sonic_start
+    outs['ultra_sonic_sensor'] = sonic_start
+    avoid_startact = cast(sample(self.avoid_actor(custom_start_out,bdims=1)))
+    # investigate_startact = cast(sample(self.investigate_actor(startout, bdims=1)))
+    investigate_startact = cast(sample(self.investigate_actor(custom_start_out,bdims=1)))
 
     _, (outs, acts) = jaxutils.scan(
-        imgstep, sg((startlat, startact)),
+        imgstep_sensor, sg((startlat, startact)),
         jnp.arange(self.config.imag_length), self.config.imag_unroll)
     
     _, (avoid_outs, avoid_acts) = jaxutils.scan(
-        avoid_imgstep, sg((startlat, avoid_startact)),
+        avoid_imgstep_sensor, sg((startlat, avoid_startact)),
         jnp.arange(self.config.imag_length), self.config.imag_unroll)
     
     _, (investigate_outs, investigate_acts) = jaxutils.scan(
-        investigate_imgstep, sg((startlat, investigate_startact)),
+        investigate_imgstep_sensor, sg((startlat, investigate_startact)),
         jnp.arange(self.config.imag_length), self.config.imag_unroll)
     
     outs, acts = treemap(lambda x: x.swapaxes(0, 1), (outs, acts))
@@ -578,77 +623,77 @@ class Agent(nj.Module):
     if self.config.replay_critic_loss:
       replay_critic = self.critic(
           replay_outs if self.config.replay_critic_grad else sg(replay_outs))
-      avoid_replay_critic = self.avoid_critic(
-          replay_outs if self.config.replay_critic_grad else sg(replay_outs))
-      investigate_replay_critic = self.investigate_critic(
-          replay_outs if self.config.replay_critic_grad else sg(replay_outs))
+      # avoid_replay_critic = self.avoid_critic(
+      #     replay_outs if self.config.replay_critic_grad else sg(replay_outs))
+      # investigate_replay_critic = self.investigate_critic(
+      #     replay_outs if self.config.replay_critic_grad else sg(replay_outs))
       
       replay_slowcritic = self.slowcritic(replay_outs)
-      avoid_replay_slowcritic = self.avoid_slowcritic(replay_outs)
-      investigate_replay_slowcritic = self.investigate_slowcritic(replay_outs)
+      # avoid_replay_slowcritic = self.avoid_slowcritic(replay_outs)
+      # investigate_replay_slowcritic = self.investigate_slowcritic(replay_outs)
 
       boot = dict(
           imag=ret[:, 0].reshape(data['reward'].shape),
           critic=replay_critic.mean(),
       )[self.config.replay_critic_bootstrap]
 
-      avoid_boot = dict(
-          imag=avoid_ret[:, 0].reshape(data['avoid_reward'].shape),
-          critic=avoid_replay_critic.mean(),
-      )[self.config.replay_critic_bootstrap]
+      # avoid_boot = dict(
+      #     imag=avoid_ret[:, 0].reshape(data['avoid_reward'].shape),
+      #     critic=avoid_replay_critic.mean(),
+      # )[self.config.replay_critic_bootstrap]
 
-      investigate_boot = dict(
-          imag=investigate_ret[:, 0].reshape(data['investigate_reward'].shape),
-          critic=investigate_replay_critic.mean(),
-      )[self.config.replay_critic_bootstrap]
+      # investigate_boot = dict(
+      #     imag=investigate_ret[:, 0].reshape(data['investigate_reward'].shape),
+      #     critic=investigate_replay_critic.mean(),
+      # )[self.config.replay_critic_bootstrap]
 
 
       rets = [boot[:, -1]]
-      avoid_rets = [avoid_boot[:, -1]]
-      investigate_rets = [investigate_boot[:, -1]]
+      # avoid_rets = [avoid_boot[:, -1]]
+      # investigate_rets = [investigate_boot[:, -1]]
 
       live = f32(~data['is_terminal'])[:, 1:] * (1 - 1 / self.config.horizon)
       cont = f32(~data['is_last'])[:, 1:] * self.config.return_lambda_replay
 
       interm = data['reward'][:, 1:] + (1 - cont) * live * boot[:, 1:]
-      avoid_interm = data['avoid_reward'][:, 1:] + (1 - cont) * live * avoid_boot[:, 1:]
-      investigate_interm = data['investigate_reward'][:, 1:] + (1 - cont) * live * investigate_boot[:, 1:]
+      # avoid_interm = data['avoid_reward'][:, 1:] + (1 - cont) * live * avoid_boot[:, 1:]
+      # investigate_interm = data['investigate_reward'][:, 1:] + (1 - cont) * live * investigate_boot[:, 1:]
 
       for t in reversed(range(live.shape[1])):
         rets.append(interm[:, t] + live[:, t] * cont[:, t] * rets[-1])
-        avoid_rets.append(avoid_interm[:, t] + live[:, t] * cont[:, t] * avoid_rets[-1])
-        investigate_rets.append(investigate_interm[:, t] + live[:, t] * cont[:, t] * investigate_rets[-1])
+        # avoid_rets.append(avoid_interm[:, t] + live[:, t] * cont[:, t] * avoid_rets[-1])
+        # investigate_rets.append(investigate_interm[:, t] + live[:, t] * cont[:, t] * investigate_rets[-1])
 
       replay_ret = jnp.stack(list(reversed(rets))[:-1], 1)
-      avoid_replay_ret = jnp.stack(list(reversed(avoid_rets))[:-1], 1)
-      investigate_replay_ret = jnp.stack(list(reversed(investigate_rets))[:-1], 1)
+      # avoid_replay_ret = jnp.stack(list(reversed(avoid_rets))[:-1], 1)
+      # investigate_replay_ret = jnp.stack(list(reversed(investigate_rets))[:-1], 1)
       
       voffset, vscale = self.valnorm(replay_ret, update)
-      avoid_voffset, avoid_vscale = self.valnorm(avoid_replay_ret, update)
-      investigate_voffset, investigate_vscale = self.valnorm(investigate_replay_ret, update)
+      # avoid_voffset, avoid_vscale = self.valnorm(avoid_replay_ret, update)
+      # investigate_voffset, investigate_vscale = self.valnorm(investigate_replay_ret, update)
       
       ret_normed = (replay_ret - voffset) / vscale
-      avoid_ret_normed = (avoid_replay_ret - avoid_voffset) / avoid_vscale
-      investigate_ret_normed = (investigate_replay_ret - investigate_voffset) / investigate_vscale
+      # avoid_ret_normed = (avoid_replay_ret - avoid_voffset) / avoid_vscale
+      # investigate_ret_normed = (investigate_replay_ret - investigate_voffset) / investigate_vscale
 
       ret_padded = jnp.concatenate([ret_normed, 0 * ret_normed[:, -1:]], 1)
-      avoid_ret_padded = jnp.concatenate([avoid_ret_normed, 0 * avoid_ret_normed[:, -1:]], 1)
-      investigate_ret_padded = jnp.concatenate([investigate_ret_normed, 0 * investigate_ret_normed[:, -1:]], 1)
+      # avoid_ret_padded = jnp.concatenate([avoid_ret_normed, 0 * avoid_ret_normed[:, -1:]], 1)
+      # investigate_ret_padded = jnp.concatenate([investigate_ret_normed, 0 * investigate_ret_normed[:, -1:]], 1)
 
       losses['replay_critic'] = sg(f32(~data['is_last']))[:, :-1] * -(
           replay_critic.log_prob(sg(ret_padded)) +
           self.config.slowreg * replay_critic.log_prob(
               sg(replay_slowcritic.mean())))[:, :-1]
       
-      losses['avoid_replay_critic'] = sg(f32(~data['is_last']))[:, :-1] * -(
-          avoid_replay_critic.log_prob(sg(avoid_ret_padded)) +
-          self.config.slowreg * avoid_replay_critic.log_prob(
-              sg(avoid_replay_slowcritic.mean())))[:, :-1]
+      # losses['avoid_replay_critic'] = sg(f32(~data['is_last']))[:, :-1] * -(
+      #     avoid_replay_critic.log_prob(sg(avoid_ret_padded)) +
+      #     self.config.slowreg * avoid_replay_critic.log_prob(
+      #         sg(avoid_replay_slowcritic.mean())))[:, :-1]
       
-      losses['investigate_replay_critic'] = sg(f32(~data['is_last']))[:, :-1] * -(
-          investigate_replay_critic.log_prob(sg(investigate_ret_padded)) +
-          self.config.slowreg * investigate_replay_critic.log_prob(
-              sg(investigate_replay_slowcritic.mean())))[:, :-1]
+      # losses['investigate_replay_critic'] = sg(f32(~data['is_last']))[:, :-1] * -(
+      #     investigate_replay_critic.log_prob(sg(investigate_ret_padded)) +
+      #     self.config.slowreg * investigate_replay_critic.log_prob(
+      #         sg(investigate_replay_slowcritic.mean())))[:, :-1]
 
     # Metrics
     metrics.update({f'{k}_loss': v.mean() for k, v in losses.items()})
@@ -665,8 +710,8 @@ class Agent(nj.Module):
     
     if self.config.replay_critic_loss:
       metrics.update(jaxutils.tensorstats(replay_ret, 'replay_ret'))
-      metrics.update(jaxutils.tensorstats(avoid_replay_ret, 'avoid_replay_ret'))
-      metrics.update(jaxutils.tensorstats(investigate_replay_ret, 'investigate_replay_ret'))
+      #metrics.update(jaxutils.tensorstats(avoid_replay_ret, 'avoid_replay_ret'))
+      #metrics.update(jaxutils.tensorstats(investigate_replay_ret, 'investigate_replay_ret'))
 
     metrics['td_error'] = jnp.abs(ret - val[:, :-1]).mean()
     metrics['ret_rate'] = (jnp.abs(ret) > 1.0).mean()
