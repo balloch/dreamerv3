@@ -41,11 +41,11 @@ defaults:
     script: train
     steps: 1e10
     duration: 0
-    num_envs: 16
-    num_envs_eval: 4
+    num_envs: 1
+    num_envs_eval: 1
     expl_until: 0
-    log_every: 120
-    save_every: 900
+    log_every: 50
+    save_every: 100
     eval_every: 180
     eval_initial: True
     eval_eps: 1
