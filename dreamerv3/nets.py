@@ -134,7 +134,7 @@ class RSSM(nj.Module):
         self._dist(post).entropy(), 'post_ent'))
     return {'dyn': dyn, 'rep': rep}, metrics
 
-  def loss_separate(self, outs_separate, outs, free=1.0):
+  def loss_separate(self, outs_separate, outs, free=1.0): #
     metrics = {}
     prior = self._prior(outs.get('feat', outs['deter']))
     post = outs['logit']
@@ -154,7 +154,7 @@ class RSSM(nj.Module):
       
     return dyn_y_i_losses, metrics
 
-  def compute_bayesian_surprise(self,  outs_separate, newlat_separate, outs, free=1.0):
+  def compute_bayesian_surprise(self,  outs_separate, newlat_separate, outs, free=1.0): #
     prior = self._prior(outs.get('feat', outs['deter']))
     post = outs['logit']
     batch_size = outs['deter'].shape[0]
@@ -399,7 +399,7 @@ class SimpleEncoder(nj.Module):
 
     return x
 
-class SeparateEncoder(nj.Module):
+class SeparateEncoder(nj.Module): #
 
   depth: int = 128
   mults: tuple = (1, 2, 4, 2)

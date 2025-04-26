@@ -54,7 +54,7 @@ class Agent(nj.Module):
     # Encoder separate
     self.enc_separate = {
         'simple': bind(nets.SeparateEncoder, **config.enc.simple),
-    }[config.enc.typ](enc_space, name='enc_separate')
+    }[config.enc.typ](enc_space, name='enc_separate') #
 
     self.dec = {
         'simple': bind(nets.SimpleDecoder, **config.dec.simple),
@@ -125,7 +125,7 @@ class Agent(nj.Module):
         self.enc, self.dyn, self.dec, self.rew, self.avoid_rew, self.investigate_rew, self.con,
         self.actor, self.avoid_actor, self.investigate_actor, self.critic, self.avoid_critic, self.investigate_critic,
         self.enc_separate
-        ]
+        ] # Remove the avoid and investigate actors for the time being
 
     scales = self.config.loss_scales.copy()
     cnn = scales.pop('dec_cnn')
@@ -137,7 +137,7 @@ class Agent(nj.Module):
         
 
   @property
-  def policy_keys(self):
+  def policy_keys(self): #
     return '/(enc|dyn|actor|avoid_actor|investigate_actor|enc_separate)/'
 
   @property
@@ -166,7 +166,7 @@ class Agent(nj.Module):
   def init_report(self, batch_size):
     return self.init_train(batch_size)
 
-  def policy(self, obs, carry, mode='train'):
+  def policy(self, obs, carry, mode='train'): #
     self.config.jax.jit and embodied.print(
         'Tracing policy function', color='yellow')
     prevlat, prevact = carry
@@ -312,14 +312,14 @@ class Agent(nj.Module):
         for k in self.act_space}
     prevacts = jaxutils.onehot_dict(prevacts, self.act_space)
     embed = self.enc(data)
-    embed_separate = self.enc_separate(data)
+    embed_separate = self.enc_separate(data) #
 
     # print(data)
 
-    newlat, outs = self.dyn.observe(prevlat, prevacts, embed, data['is_first'])
-    total_newlat_separate = []
-    total_out_separate = []
-    for iter, embed_y in enumerate(embed_separate):
+    newlat, outs = self.dyn.observe(prevlat, prevacts, embed, data['is_first']) #
+    total_newlat_separate = [] #
+    total_out_separate = [] #
+    for iter, embed_y in enumerate(embed_separate): #
       newlat_separate, outs_separate = self.dyn.observe_with_separate(prevlat, prevacts, embed_y, data['is_first'], iter)
       total_newlat_separate.append(newlat_separate)
       total_out_separate.append(outs_separate)
@@ -341,7 +341,7 @@ class Agent(nj.Module):
       softlabel = data['cont'] * (1 - 1 / self.config.horizon)
       losses['cont'] = -dists['cont'].log_prob(softlabel)
     dynlosses, mets = self.dyn.loss(outs, **self.config.rssm_loss)
-    dynlosses_sep, mets_sep = self.dyn.loss_separate(total_out_separate, outs, **self.config.rssm_loss)
+    dynlosses_sep, mets_sep = self.dyn.loss_separate(total_out_separate, outs, **self.config.rssm_loss) #
     losses.update(dynlosses)
     losses.update(dynlosses_sep)
     metrics.update(mets)
