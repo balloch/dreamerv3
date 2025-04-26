@@ -22,6 +22,8 @@ ACTIONS = {
 }
 CROP_SIZE = 256
 POOL_SIZE = 64
+DISTANCE_THRESHOLD = 0.5
+TRAJECTORY = [[0, 2, 2, 0], [2, 0, 0, 2]]
 
 @dataclass
 class VirtualHomeConfig:
@@ -63,13 +65,17 @@ class VirtualHome(embodied.Env):
             observation_types=[config.obs_type] * config.num_agents,
             seed=seed if not None else 123,
         )       
-        self._env.reset(environment_id=config.env_id)
+        self._env.reset(
+            environment_id=config.env_id,
+            init_rooms=["livingroom", "bathroom", "bedroom"],
+        )
 
         self._episode = 0
         self._reward = 0
         self._done = False
 
         self.destination = config.destination
+        self.trajectories = [-1] * 4
 
         print("Number of agents: ", self._env.num_agents)
         print("Number of cameras: ", self._env.num_static_cameras, self._env.num_camera_per_agent)
@@ -108,16 +114,32 @@ class VirtualHome(embodied.Env):
         }
     
     def reward(self, obs):
+        # facing = []
+        # for edges in obs["edges"]:
+        #     if edges['relation_type'] == "FACING" and edges["from_id"] == AGENT_ID:
+        #         facing.append(edges["to_id"])
+        # agent_position = list(filter(lambda x: x["id"] == AGENT_ID, obs["nodes"]))[0]["obj_transform"]["position"] # TODO: check
+        # euclidean_distance = lambda x: np.sqrt((x["obj_transform"]["position"][0] - agent_position[0]) ** 2 \
+        #                                        + (x["obj_transform"]["position"][-1] - agent_position[-1]) ** 2)
+        # min_facing_obj = min(list(filter(lambda x: x["id"] in facing, obs["nodes"])), key=euclidean_distance)
+        # if euclidean_distance(min_facing_obj) > DISTANCE_THRESHOLD:
+        #     return 0, False
+        # if self.trajectories[-4:] not in TRAJECTORY:
+        #     return 0, False
+        # return 1, True
         for e in obs["edges"]:
             if e["relation_type"] == "INSIDE" and \
                e["from_id"] == AGENT_ID + 1 and \
-               e["to_id"] in ROOMS.keys():
+               e["to_id"] == self.destination:
                 return 1, True
         return 0, False
+
 
     def step(self, action_dict):
         if action_dict["reset"]:
             return self.reset()
+        self.trajectories.pop(0)
+        self.trajectories.append(action_dict["action"])
         action_dict = {0: ACTIONS[action_dict["action"]]}
         f1.write(f"{action_dict[0]}\n")
         self._env.step(action_dict)
@@ -125,7 +147,7 @@ class VirtualHome(embodied.Env):
         reward, self._done = self.reward(obs_full)
         f2.write(f"{reward} {self._done}\n")
         obs_image = self._env.get_observation(AGENT_ID, "image")
-        return self._obs(obs_image, reward, 0, 0, False, False, self._done)
+        return self._obs(obs_image, reward, 0, reward, False, False, self._done)
 
     def _obs(self, obs, reward, avoid_reward, investigate_reward,
              is_first, is_last, is_terminal, ultra_sonic_sensor = np.zeros((6,))):
@@ -145,10 +167,32 @@ class VirtualHome(embodied.Env):
     def reset(self, env_id=None):
         if env_id is not None:
             self.config.env_id = env_id
-        self._env.reset(environment_id=self.config.env_id)
+        self._env.reset(
+            environment_id=self.config.env_id,
+            init_rooms=["livingroom", "bathroom", "bedroom"]
+        )
         self._done = False
         self._episode = 0
         return self._obs(self._env.get_observation(AGENT_ID, "image"), 0, 0, 0, True, False, False)
 
     def close(self):
         self._env.close()
+
+# TASKS (NEED TO FIGURE OUT HOW MANY STEPS)
+# Go to kitchen from room that is randomnly initialized
+# Go to different room from your current room
+# Sweep all rooms (Hard)
+# Scan rooms (go in a circle) (Easy)
+# Find the object
+
+# SENSOR CHANGES
+# Randomly dropping frames to the agent
+# Gaussian noise (across all sensors)
+# Gaussian noise (across all sensors) + random dropping frames
+
+# SENSORS
+# Averaging pooled image (control)
+# Max pool image
+# First person POV
+
+# Need to show that performance increases when sensor is affected
