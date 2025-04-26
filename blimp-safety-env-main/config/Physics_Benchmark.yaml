@@ -1,0 +1,26 @@
+environment: "blimp_env:FollowTaskEnv"
+feature_extractor: mlp
+disable_render: true
+dynamics_mode: physics
+do_env_check: false
+logdir: ./logdir
+log_interval: 1000
+experiment_base_name: "Physics_Bench"
+eval_freq: 100000
+eval_episodes: 3
+reward_unit: .0001
+action_repeat: 10 
+device: "cuda:0"
+
+debug: false
+max_episode_steps: 10000
+max_train_steps: 100000000
+feature_dim: 128
+hidden_dim: 128
+
+reset_options:
+  num_fires: 10
+  num_balloons: 10
+
+# For visualization
+ckpt_path: ./logdir/best_physics_model.zip

@@ -1,6 +1,6 @@
 defaults:
 
-  seed: 0
+  seed: 1
   method: name
   task: dummy_disc
   logdir: /dev/null
@@ -9,9 +9,9 @@ defaults:
   tensorboard_videos: True
 
   replay:
-    size: 5e6
+    size: 3e6 #5e6
     online: True
-    fracs: {uniform: 1.0, priority: 0.0, recency: 0.0}
+    fracs: {uniform: 0.5, priority: 0.0, recency: 0.5} #{uniform: 1.0, priority: 0.0, recency: 0.0}
     prio: {exponent: 0.8, maxfrac: 0.5, initial: inf, zero_on_sample: True}
     priosignal: model
     recexp: 1.0
@@ -38,11 +38,12 @@ defaults:
     xla_dump: False
 
   run:
+    mode: normal
     script: train
     steps: 1e10
     duration: 0
-    num_envs: 16
-    num_envs_eval: 4
+    num_envs: 1 #16
+    num_envs_eval: 1 #4
     expl_until: 0
     log_every: 120
     save_every: 900
@@ -95,10 +96,13 @@ defaults:
   replay_length_eval: 0
   replay_context: 1
   random_agent: False
-  loss_scales: {dec_cnn: 1.0, dec_mlp: 1.0, reward: 1.0, cont: 1.0, dyn: 1.0, rep: 0.1, actor: 1.0, critic: 1.0, replay_critic: 0.3}
+  loss_scales: {dec_cnn: 1.0, dec_mlp: 1.0, investigate_reward: 1.0, avoid_reward: 1.0, reward: 1.0, cont: 1.0, dyn: 1.0, rep: 0.1, actor: 1.0, critic: 1.0, replay_critic: 0.3,
+    avoid_actor: 1.0, avoid_critic: 1.0, 
+    avoid_replay_critic: 0.3, investigate_actor: 1.0, investigate_critic: 1.0, investigate_replay_critic: 0.3, dyn_y_0: 1.0, dyn_y_1: 1.0, dyn_y_2: 1.0, dyn_y_3: 1.0, dyn_y_4: 1.0, enc_seperate: 1.0} # Make sure to add for each sensor.
   opt: {scaler: rms, lr: 4e-5, eps: 1e-20, momentum: True, wd: 0.0, warmup: 1000, globclip: 0.0, agc: 0.3, beta1: 0.9, beta2: 0.999, details: False, pmin: 1e-3, anneal: 0, schedule: constant}
   separate_lrs: False
-  lrs: {dec: 1e-4, enc: 1e-4, dyn: 1e-4, rew: 1e-4, con: 1e-4, actor: 3e-5, critic: 3e-5}
+  lrs: {dec: 1e-4, enc: 1e-4, dyn: 1e-4,  rew: 1e-4, avoid_rew: 1e-4, investigate_rew: 1e-4, con: 1e-4, actor: 3e-5, avoid_actor: 3e-5,
+  investigate_actor: 3e-5, critic: 3e-5, avoid_critic: 3e-5, investigate_critic: 3e-5, enc_separate: 1e-4}
   ac_grads: none
   reset_context: 0.0
   replay_critic_loss: True
@@ -106,6 +110,7 @@ defaults:
   replay_critic_bootstrap: imag
   reward_grad: True
   report_openl_context: 8
+  
 
   # World Model
   dyn:
@@ -127,6 +132,11 @@ defaults:
   # Actor Critic
   actor: {layers: 3, units: 1024, act: silu, norm: rms, minstd: 0.1, maxstd: 1.0, outscale: 0.01, unimix: 0.01, inputs: [deter, stoch], winit: normal, block_fans: False, block_norm: False}
   critic: {layers: 3, units: 1024, act: silu, norm: rms, dist: symexp_twohot, outscale: 0.0, inputs: [deter, stoch], winit: normal, bins: 255, block_fans: False, block_norm: False}
+  custom_actor: {layers: 3, units: 1024, act: silu, norm: rms, minstd: 0.1, maxstd: 1.0, outscale: 0.01, unimix: 0.01, inputs: [deter, stoch], winit: normal, block_fans: False, block_norm: False}
+  custom_critic: {layers: 3, units: 1024, act: silu, norm: rms, dist: symexp_twohot, outscale: 0.0, inputs: [deter, stoch], winit: normal, bins: 255, block_fans: False, block_norm: False}
+  # custom_actor: {layers: 3, units: 1024, act: silu, norm: rms, minstd: 0.1, maxstd: 1.0, outscale: 0.01, unimix: 0.01, inputs: [ultra_sonic_sensor], winit: normal, block_fans: False, block_norm: False}
+  # custom_critic: {layers: 3, units: 1024, act: silu, norm: rms, dist: symexp_twohot, outscale: 0.0, inputs: [ultra_sonic_sensor], winit: normal, bins: 255, block_fans: False, block_norm: False}
+  
   actor_dist_disc: onehot
   actor_dist_cont: normal
   imag_start: all

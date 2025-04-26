@@ -1,6 +1,11 @@
+chex
+einops
+jax[cuda12_pip]
+jaxlib
+optax
+tensorflow_probability
 cloudpickle
 colored
-gputil
 msgpack
 numpy
 psutil

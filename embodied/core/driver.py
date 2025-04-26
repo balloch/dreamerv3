@@ -4,7 +4,11 @@ import cloudpickle
 import numpy as np
 
 from .. import distr
-
+import ollama
+import base64
+from io import BytesIO
+from PIL import Image
+import cv2
 
 class Driver:
 
@@ -62,6 +66,7 @@ class Driver:
       obs = [self._receive(pipe) for pipe in self.pipes]
     else:
       obs = [env.step(act) for env, act in zip(self.envs, acts)]
+    # self.ask_vlm(obs[-1]['img']) # Geigh Zollicoffer
     obs = {k: np.stack([x[k] for x in obs]) for k in obs[0].keys()}
     assert all(len(x) == self.length for x in obs.values()), obs
     acts, outs, self.carry = policy(obs, self.carry, **self.kwargs)
@@ -96,6 +101,40 @@ class Driver:
       print('Terminating workers due to an exception.')
       [proc.kill() for proc in self.procs]
       raise
+
+  def encode_image_from_obs(self, obs):
+    # Check if obs is a PIL Image
+    if isinstance(obs, Image.Image):
+        with BytesIO() as img_byte_array:
+            obs.save(img_byte_array, format='PNG')  # You can also use 'JPEG'
+            encoded_string = base64.b64encode(img_byte_array.getvalue()).decode('utf-8')
+    # Check if obs is a NumPy array (e.g., from OpenCV)
+    elif isinstance(obs, np.ndarray):
+        _, buffer = cv2.imencode('.png', obs)  # Convert to PNG
+        encoded_string = base64.b64encode(buffer).decode('utf-8')
+    else:
+        raise ValueError(f"Unsupported image format: {type(obs)}")
+    
+    return encoded_string
+
+  def ask_vlm(self, obs):
+    # Encode the obs image to base64 string
+    encoded_image = self.encode_image_from_obs(obs)
+
+    # Make the API request with the encoded image
+    res = ollama.chat(
+      model="llava:7b",
+      messages=[
+      {
+      "role": "user",
+      "content": "Your Role:\nYou are an AI responsible for selecting what policy an autonomous blimp should follow based upon your best judgment.\n\nBlimp Mission:\nNavigate the area to collect information on waypoints and interesting phenomenon, while avoiding dangers. Waypoints are represented by colorful beach balls.\n\nAvailable Policies:\n- Default Task Policy: this policy will navigate to the closest waypoint while avoiding fires. It has only ever seen waypoints (beach balls) and fires and does not know how to handle unknown objects.\n\n- Investigate Policy: this policy will navigate to a specified object without getting too close. Useful for gaining new samples to train on. Only use if it does not put the blimp in danger.\n\n- Avoid Policy: this policy will navigate away from a specified object. Use this to keep the blimp away from potentially dangerous objects.",
+      "images": [encoded_image]  # Pass base64 encoded image
+      }
+      ]
+    )
+
+    # Output the response
+    print(res['message']['content'])
 
   @staticmethod
   def _env_server(context, envid, pipe, ctor):

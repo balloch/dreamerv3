@@ -1,0 +1,36 @@
+debug: false
+do_env_check: false
+disable_render: true
+
+device: "cuda:7"
+
+eval_episodes: 3
+eval_freq: 100000
+max_episode_steps: 3000
+max_train_steps: 20000000
+log_interval: 1000
+logdir: ./logdir
+
+dynamics_mode: simple
+feature_extractor: mlp
+feature_dim: 128
+hidden_dim: 128
+
+reward_unit: .0001
+action_repeat: 1
+
+reset_options:
+  pose: [0, 0, 4, 0, 0, 0]
+  num_fires: 1
+  num_balloons: 1
+  balloon_locations:
+    - [12, -6, 4]
+  balloon_locations_final:
+    - [12, 6, 4]
+  fire_locations:
+    - [12, 0, 4]
+
+steps: 25
+
+environment: "blimp_env:FollowTaskEnv"
+experiment_base_name: "SMART_AGENT"

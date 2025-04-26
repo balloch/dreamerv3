@@ -9,13 +9,24 @@ warnings.filterwarnings('ignore', '.*truncated to dtype int32.*')
 
 
 def main():
-
+  #mode='safety_adaptation'
+  mode='avoid'
+  # check_pt = '/home/general/logdir/20241101T001652-simple-blimp-1/checkpoint.ckpt'
+  # check_pt = '/home/general/logdir/20250123T114529-simple-blimp-1/checkpoint.ckpt'
+  #check_pt = '/home/general/logdir/20250123T003907-simple-blimp-1/checkpoint.ckpt'
+  #check_pt = '/home/general/logdir/20250122T195652-simple-blimp-1/checkpoint.ckpt'
+  # check_pt = '/logdir/20250325T165746-blimp/checkpoint.ckpt'
+  # check_pt = '/logdir/20250402T173423-blimp/checkpoint.ckpt'
+  check_pt = '/logdir/20250418T183337-blimp/checkpoint.ckpt'
   config = embodied.Config(dreamerv3.Agent.configs['defaults'])
   config = config.update({
-      **dreamerv3.Agent.configs['size50m'],#['size100m'],
-      #'logdir': f'~/logdir/{embodied.timestamp()}-blimp',
+      **dreamerv3.Agent.configs['size50m'],#['size50m'],
       'run.train_ratio': 32,
-      'logdir': f'/logdir/{embodied.timestamp()}-blimp'
+      'run.from_checkpoint': check_pt,
+      'jax.policy_devices': [1],
+      'jax.train_devices': [1],
+      'run.mode': mode,
+      'logdir':'/logdir/20250325T165746-blimp/'
   })
   ##DEBUGMODE
   #config = config.update({**dreamerv3.Agent.configs['debug'],})
@@ -77,10 +88,9 @@ def main():
       batch_length_eval=config.batch_length_eval,
       replay_context=config.replay_context,
   )
-
-  embodied.run.train(
+#def eval_only(make_agent, make_env, make_logger, args):
+  embodied.run.eval_only(
       bind(make_agent, config),
-      bind(make_replay, config),
       bind(make_env, config),
       bind(make_logger, config), args)
 

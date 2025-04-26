@@ -13,14 +13,13 @@ def main():
   config = embodied.Config(dreamerv3.Agent.configs['defaults'])
   config = config.update({
       **dreamerv3.Agent.configs['size50m'],#['size100m'],
-      #'logdir': f'~/logdir/{embodied.timestamp()}-blimp',
+      'logdir': f'/home/rwright99/logdir/{embodied.timestamp()}-blimp',
       'run.train_ratio': 32,
-      'logdir': f'/logdir/{embodied.timestamp()}-blimp'
   })
   ##DEBUGMODE
   #config = config.update({**dreamerv3.Agent.configs['debug'],})
   config = embodied.Flags(config).parse()
-
+  config.logdir = f'/home/rwright99/logdir/{embodied.timestamp()}-blimp'
   print('Logdir:', config.logdir)
   logdir = embodied.Path(config.logdir)
   logdir.mkdir()
@@ -55,15 +54,14 @@ def main():
     from blimp_env.wrappers import (
       NormalizePoseWrapper,
     )
-
+   
     Env = gym.envs.registration.load_env_creator("blimp_env:FollowTaskEnv")
     Env.reset_options = {
-                          'pose': [0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                          'pose': [0, 0, 4, 0, 0, 0],
                           'num_fires': 10,
                           'num_balloons': 10
                         }
-    env = Env(dynamics='simple',render_mode='rgb_array',img_size=(64,64),disable_render=False, max_episode_steps=5000,reward_unit=.0001)  # render_env='physics'
-    # env = Env(dynamics='physics',render_mode='rgb_array',img_size=(64,64),disable_render=False,max_episode_steps=10000,reward_unit=.0001,action_repeat=20)
+    env = Env(dynamics='simple',render_mode='rgb_array',img_size=(64,64),disable_render=False)    
     env = NormalizePoseWrapper(env)
     env = from_gymnasium.FromGymnasium(env)
     env = dreamerv3.wrap_env(env, config)

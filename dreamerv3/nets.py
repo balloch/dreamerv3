@@ -75,6 +75,31 @@ class RSSM(nj.Module):
       outs['feat'] = feat
     return cast(carry), cast(outs)
 
+  def observe_with_separate(self, carry, action, embed, reset, sensor_id, bdims=2):
+    kw = dict(**self.kw, norm=self.norm, act=self.act)
+    assert bdims in (1, 2)
+    if isinstance(action, dict):
+      action = jaxutils.concat_dict(action)
+    carry, action, embed = cast((carry, action, embed))
+    if bdims == 2:
+      return jaxutils.scan(
+          lambda carry, inputs: self.observe_with_separate(carry, *inputs, sensor_id=sensor_id, bdims=1),
+          carry, (action, embed, reset), self.unroll, axis=1)
+    deter, stoch, action = jaxutils.reset(
+        (carry['deter'], carry['stoch'], action), reset)
+    deter, feat = self._gru(deter, stoch, action) #STOP GRAD? Geigh Zollicoffer
+    x = embed if self.absolute else jnp.concatenate([feat, embed], -1)
+    for i in range(self.obslayers):
+      x = self.get(f'obs{i}_sensor_{sensor_id}', Linear, self.hidden, **kw)(x)
+    logit = self._logit('obslogit', x)
+    stoch = cast(self._dist(logit).sample(seed=nj.seed()))
+    carry = dict(deter=deter, stoch=stoch)
+    outs = dict(deter=deter, stoch=stoch, logit=logit)
+    if self.cell == 'stack':
+      carry['feat'] = feat
+      outs['feat'] = feat
+    return cast(carry), cast(outs)
+
   def imagine(self, carry, action, bdims=2):
     assert bdims in (1, 2)
     if isinstance(action, dict):
@@ -108,6 +133,103 @@ class RSSM(nj.Module):
     metrics.update(jaxutils.tensorstats(
         self._dist(post).entropy(), 'post_ent'))
     return {'dyn': dyn, 'rep': rep}, metrics
+
+  def loss_separate(self, outs_separate, outs, free=1.0):
+    metrics = {}
+    prior = self._prior(outs.get('feat', outs['deter']))
+    post = outs['logit']
+    dyn_y_i_losses = {}
+    for i, y_i_out in enumerate(outs_separate):
+      y_i_post = y_i_out['logit']
+      dyn_y_i = self._dist(sg(post)).kl_divergence(self._dist(y_i_post))
+      #rep = self._dist(post).kl_divergence(self._dist(sg(prior)))
+      if free:
+        dyn_y_i = jnp.maximum(dyn_y_i, free)
+        # rep = jnp.maximum(rep, free)
+      # metrics.update(jaxutils.tensorstats(
+      #     self._dist(prior).entropy(), 'prior_ent'))
+      metrics.update(jaxutils.tensorstats(
+          self._dist(y_i_post).entropy(), f'post_{i}_ent'))
+      dyn_y_i_losses[f'dyn_y_{i}'] = dyn_y_i
+      
+    return dyn_y_i_losses, metrics
+
+  def compute_bayesian_surprise(self,  outs_separate, newlat_separate, outs, free=1.0):
+    prior = self._prior(outs.get('feat', outs['deter']))
+    post = outs['logit']
+    batch_size = outs['deter'].shape[0]
+    best_surprise = jnp.full((batch_size,), jnp.inf)
+    best_i = 0
+    best_lat = newlat_separate[0]
+    best_out = outs_separate[0]
+    for i, (y_i_out, y_i_lat) in enumerate(zip(outs_separate, newlat_separate)):
+      y_i_post = y_i_out['logit']
+      surprise = self._dist(y_i_post).kl_divergence(self._dist(prior))
+      print(surprise)
+      condition = best_surprise > surprise  
+
+      # Expand condition to match target shape (16, 4096)
+      expanded_condition_deter = jnp.broadcast_to(condition[:, None], y_i_lat['deter'].shape)
+      expanded_condition_stoch = jnp.broadcast_to(condition[:, None, None], y_i_lat['stoch'].shape)
+      # best_lat = jax.lax.select(best_surprise > surprise, y_i_lat, best_lat)
+      best_lat = {
+      'deter': jax.lax.select(expanded_condition_deter, y_i_lat['deter'], best_lat['deter']),
+      'stoch': jax.lax.select(expanded_condition_stoch, y_i_lat['stoch'], best_lat['stoch'])
+      }
+      best_out = {
+      'deter': jax.lax.select(expanded_condition_deter, y_i_out['deter'], best_out['deter']),
+      'stoch': jax.lax.select(expanded_condition_stoch, y_i_out['stoch'], best_out['stoch']),
+      'logit': jax.lax.select(expanded_condition_stoch, y_i_out['logit'], best_out['logit'])
+      }
+      
+      # best_out = jax.lax.select(best_surprise > surprise, y_i_out, best_out)
+      best_surprise = jax.lax.select(best_surprise > surprise, surprise, best_surprise)
+        # #best_sup > surprise:
+        # best_sup = surprise
+        # # best_i = i
+        # best_lat = y_i_lat
+        # best_out = y_i_out
+      
+    return best_lat, best_out
+
+  # def compute_bayesian_surprise(self, outs_separate, newlat_separate, outs, free=1.0):
+  #   prior = self._prior(outs.get('feat', outs['deter']))
+  #   post = outs['logit']
+    
+  #   # Pack data into arrays
+  #   surprises = jnp.array([
+  #       self._dist(y_i_out['logit']).kl_divergence(self._dist(prior))
+  #       for y_i_out in outs_separate
+  #   ])
+    
+  #   latents = jnp.stack(newlat_separate)  # Assuming these are arrays
+  #   logits = jnp.stack([y['logit'] for y in outs_separate])  # Assuming logits are arrays
+
+  #   def body(i, state):
+  #       best_sup, best_i, best_lat, best_out = state
+  #       surprise = surprises[i]
+  #       y_i_lat = latents[i]
+  #       y_i_out = logits[i]
+
+  #       new_state = lax.cond(
+  #           surprise < best_sup,
+  #           lambda _: (surprise, i, y_i_lat, y_i_out),
+  #           lambda _: state,
+  #           operand=None
+  #       )
+  #       return new_state
+
+  #   # Initial state: high surprise, zero index, zeroed arrays
+  #   init_state = (
+  #       jnp.inf, 
+  #       -1, 
+  #       jnp.zeros_like(latents[0]), 
+  #       jnp.zeros_like(logits[0])
+  #   )
+
+  #   final_state = lax.fori_loop(0, surprises.shape[0], body, init_state)
+  #   _, best_i, best_lat, best_out = final_state
+  #   return best_lat, best_out
 
   def _prior(self, feat):
     kw = dict(**self.kw, norm=self.norm, act=self.act)
@@ -243,7 +365,7 @@ class SimpleEncoder(nj.Module):
     self.depths = tuple(self.depth * mult for mult in self.mults)
     self.kw = kw
 
-  def __call__(self, data, bdims=2):
+  def __call__(self, data, separate=False, bdims=2): # Geigh Zollicoffer
     kw = dict(**self.kw, norm=self.norm, act=self.act)
     outs = []
 
@@ -274,7 +396,69 @@ class SimpleEncoder(nj.Module):
 
     x = jnp.concatenate(outs, -1)
     x = x.reshape((*shape, *x.shape[1:]))
+
     return x
+
+class SeparateEncoder(nj.Module):
+
+  depth: int = 128
+  mults: tuple = (1, 2, 4, 2)
+  layers: int = 5
+  units: int = 1024
+  symlog: bool = True
+  norm: str = 'rms'
+  act: str = 'gelu'
+  kernel: int = 4
+  outer: bool = False
+  minres: int = 4
+
+  def __init__(self, spaces, **kw):
+    assert all(len(s.shape) <= 3 for s in spaces.values()), spaces
+    self.spaces = spaces
+    self.veckeys = [k for k, s in spaces.items() if len(s.shape) <= 2]
+    self.imgkeys = [k for k, s in spaces.items() if len(s.shape) == 3]
+    self.vecinp = Input(self.veckeys, featdims=1)
+    self.imginp = Input(self.imgkeys, featdims=3)
+    self.depths = tuple(self.depth * mult for mult in self.mults)
+    self.kw = kw
+
+  def __call__(self, data, separate=False, bdims=2): # Geigh Zollicoffer
+    kw = dict(**self.kw, norm=self.norm, act=self.act)
+    outs = []
+
+    shape = data['is_first'].shape[:bdims]
+    data = {k: data[k] for k in self.spaces}
+    data = jaxutils.onehot_dict(data, self.spaces)
+    print(self.veckeys)
+    print(self.imgkeys)
+    if self.veckeys:
+      for vec_key in self.veckeys:
+        print(vec_key)
+        x = Input([vec_key], featdims=1)(data, bdims, f32)
+        x = x.reshape((-1, *x.shape[bdims:]))
+        x = jaxutils.symlog(x) if self.symlog else x
+        x = jaxutils.cast_to_compute(x)
+        for i in range(self.layers):
+          x = self.get(f'mlp_{vec_key}_{i}', Linear, self.units, **kw)(x)
+        x = x.reshape((*shape, *x.shape[1:]))
+        outs.append(x)
+
+    if self.imgkeys:
+      print('ENC')
+      for img_key in self.imgkeys:
+        print(img_key)
+        x = Input(self.imgkeys, featdims=3)(data, bdims, jaxutils.COMPUTE_DTYPE) - .5 #self.imginp(data, bdims, jaxutils.COMPUTE_DTYPE) - 0.5
+        x = x.reshape((-1, *x.shape[bdims:]))
+        for i, depth in enumerate(self.depths):
+          stride = 1 if self.outer and i == 0 else 2
+          x = self.get(f'conv_{vec_key}_{i}', Conv2D, depth, self.kernel, stride, **kw)(x)
+        assert x.shape[-3] == x.shape[-2] == self.minres, x.shape
+        x = x.reshape((x.shape[0], -1))
+        print(x.shape, 'out')
+        x = x.reshape((*shape, *x.shape[1:]))
+        outs.append(x)
+
+    return outs
 
 
 class SimpleDecoder(nj.Module):

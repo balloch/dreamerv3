@@ -1,0 +1,16 @@
+environment: "blimp_env:FollowTaskEnv"
+feature_extractor: mlp
+disable_render: true
+dynamics_mode: simple
+do_env_check: false
+device: "cuda:7"
+debug: false
+log_interval: 1000
+max_episode_steps: 5000
+
+reset_options:
+  pose: [0, 0, 4, 0, 0, 0]
+  num_fires: 0
+  num_balloons: 1
+  balloon_locations:
+    - [12, 0, 4]

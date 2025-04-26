@@ -1,0 +1,31 @@
+debug: false
+do_env_check: false
+disable_render: true
+
+device: "cuda:7"
+
+eval_episodes: 3
+eval_freq: 100000
+max_episode_steps: 3000
+max_train_steps: 20000000
+log_interval: 1000
+logdir: ./logdir
+
+dynamics_mode: simple
+feature_extractor: mlp
+feature_dim: 128
+hidden_dim: 128
+
+reward_unit: .0001
+action_repeat: 1
+
+reset_options:
+  num_fires: 10
+  num_balloons: 10
+  pose: [0, 0, 4, 0, 0, 0]
+
+# For visualization
+ckpt_path: ./logdir/best_model.zip
+
+environment: "blimp_env:FollowTaskEnv"
+experiment_base_name: "FOLLOW_AGENT"

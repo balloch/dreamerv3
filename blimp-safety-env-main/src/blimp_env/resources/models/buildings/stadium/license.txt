@@ -1,0 +1,11 @@
+Model Information:
+* title:	Houston Rockets Basketball Stadium
+* source:	https://sketchfab.com/3d-models/houston-rockets-basketball-stadium-b341e223883c43b98d0671bed1dd9670
+* author:	alplaleli (https://sketchfab.com/alplaleli)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Houston Rockets Basketball Stadium" (https://sketchfab.com/3d-models/houston-rockets-basketball-stadium-b341e223883c43b98d0671bed1dd9670) by alplaleli (https://sketchfab.com/alplaleli) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -1,0 +1,29 @@
+max_train_steps: 1000000
+max_episode_steps: 5000
+feature_extractor: mlp
+feature_dim: 128
+hidden_dim: 128
+disable_render: true
+dynamics_mode: simple
+do_env_check: true
+logdir: ./logdir
+log_interval: 1000
+eval_freq: 10000
+eval_episodes: 3
+debug: false
+device: "cuda:7"
+
+#reset_options:
+#  pose: [0, 0, 4, 0, 0, 0]
+#
+#  balloon_reward_zone_radius: 20
+#  balloon_locations:
+#    - [12, 0, 8]
+#
+#  fire_danger_radius: 4
+#  fire_locations:
+#    - [12, 0, 0.1]
+
+# For visualization
+ckpt_path: ./logdir/best_model.zip
+

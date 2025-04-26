@@ -1,3 +1,31 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+[project]
+name = "dreamerv3"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "chex>=0.1.89",
+    "cloudpickle>=3.1.1",
+    "colored>=2.3.0",
+    "crafter>=1.8.3",
+    "einops>=0.8.1",
+    "ffmpeg>=1.4",
+    "gputil>=1.4.0",
+    "gymnasium==0.29.1",
+    "jax[cuda12-pip]>=0.4.34",
+    "jaxlib>=0.4.34",
+    "loguru>=0.7.3",
+    "msgpack>=1.1.0",
+    "numpy<=1.26.4",
+    "opencv-python>=4.11.0.86",
+    "optax>=0.2.4",
+    "psutil>=7.0.0",
+    "ruamel-yaml>=0.18.10",
+    "tensorflow-cpu>=2.14.0",
+    "tensorflow-probability>=0.25.0",
+    "zmq>=0.0.0",
+]
+
+[tool.uv.workspace]
+members=["blimp-safety-env-main"]
