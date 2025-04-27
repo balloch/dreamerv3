@@ -1,12 +1,9 @@
 from dataclasses import dataclass
+from random import random
 from virtualhome.simulation.environment.unity_environment import UnityEnvironment
 import numpy as np
 import embodied
-
-# INIT_ROOMS
-f1 = open("actions_taken.txt", "w")
-f2 = open("reward_received.txt", "w")
-
+import abc
 NUM_ACTIONS = 3
 ROOMS = {
     205: "kitchen",
@@ -23,7 +20,6 @@ ACTIONS = {
 CROP_SIZE = 256
 POOL_SIZE = 64
 DISTANCE_THRESHOLD = 0.5
-TRAJECTORY = [[0, 2, 2, 0], [2, 0, 0, 2]]
 
 @dataclass
 class VirtualHomeConfig:
@@ -40,7 +36,7 @@ class VirtualHomeConfig:
     use_editor: bool = False
 
     # Custom
-    destination: int = 205
+    size: tuple = (POOL_SIZE, POOL_SIZE, 3)
 
 def _average_pool_image(image, pool_size = CROP_SIZE // POOL_SIZE):
     dtype = image.dtype
@@ -51,37 +47,24 @@ def _average_pool_image(image, pool_size = CROP_SIZE // POOL_SIZE):
     image = image.mean(axis=(1, 3))
     return image.astype(dtype)
 
-class VirtualHome(embodied.Env):
-    def __init__(self, config: VirtualHomeConfig, size=(POOL_SIZE, POOL_SIZE, 3), seed=None):
-        self.config = config
-        self.size = size
+def _get_room(obs):
+    for e in obs["edges"]:
+        if e["relation_type"] == "INSIDE" and e["from_id"] == AGENT_ID + 1:
+            return e["to_id"]
+    return random.choice(ROOMS.keys())
 
+class BaseVirtualHome(embodied.Env, abc.ABC):
+    def __init__(self, config: VirtualHomeConfig):
+        self._config = config
         self._env = UnityEnvironment(
             base_port=config.base_port,
             port_id=config.port_id,
             use_editor=config.use_editor,
             num_agents=config.num_agents,
-            max_episode_length=config.max_episode_length,
             observation_types=[config.obs_type] * config.num_agents,
-            seed=seed if not None else 123,
-        )       
-        self._env.reset(
-            environment_id=config.env_id,
-            init_rooms=["livingroom", "bathroom", "bedroom"],
+            seed=42,
         )
-
-        self._episode = 0
-        self._reward = 0
-        self._done = False
-
-        self.destination = config.destination
-        self.trajectories = [-1] * 4
-
-        print("Number of agents: ", self._env.num_agents)
-        print("Number of cameras: ", self._env.num_static_cameras, self._env.num_camera_per_agent)
-        
-        import json
-        json.dump(self._env.get_graph(), open("environment_graph.json", "w"))
+        self.episode = 0
 
     # Be wary of the raw environment as it is not fully implemented
     @property
@@ -93,17 +76,9 @@ class VirtualHome(embodied.Env):
         return {
             "image": embodied.Space(np.uint8, shape=self.size),
             "reward": embodied.Space(np.float32),
-            'avoid_reward': embodied.Space(np.float32),
-            'investigate_reward': embodied.Space(np.float32),
             "is_first": embodied.Space(bool),
             "is_last": embodied.Space(bool),
             "is_terminal": embodied.Space(bool),
-            "ultra_sonic_sensor": embodied.Space(
-                np.float32,
-                (6,),
-                low=0.0,
-                high=1001.0,
-            )
         }
 
     @property
@@ -112,78 +87,300 @@ class VirtualHome(embodied.Env):
             "action": embodied.Space(np.int32, (), 0, NUM_ACTIONS),
             "reset": embodied.Space(bool),
         }
-    
-    def reward(self, obs):
-        # facing = []
-        # for edges in obs["edges"]:
-        #     if edges['relation_type'] == "FACING" and edges["from_id"] == AGENT_ID:
-        #         facing.append(edges["to_id"])
-        # agent_position = list(filter(lambda x: x["id"] == AGENT_ID, obs["nodes"]))[0]["obj_transform"]["position"] # TODO: check
-        # euclidean_distance = lambda x: np.sqrt((x["obj_transform"]["position"][0] - agent_position[0]) ** 2 \
-        #                                        + (x["obj_transform"]["position"][-1] - agent_position[-1]) ** 2)
-        # min_facing_obj = min(list(filter(lambda x: x["id"] in facing, obs["nodes"])), key=euclidean_distance)
-        # if euclidean_distance(min_facing_obj) > DISTANCE_THRESHOLD:
-        #     return 0, False
-        # if self.trajectories[-4:] not in TRAJECTORY:
-        #     return 0, False
-        # return 1, True
-        for e in obs["edges"]:
-            if e["relation_type"] == "INSIDE" and \
-               e["from_id"] == AGENT_ID + 1 and \
-               e["to_id"] == self.destination:
-                return 1, True
-        return 0, False
 
+    def _obs(self, obs, reward, is_first, is_last, is_terminal):
+        x1, y1 = (obs.shape[0] - self.config.size[0]) // 2, (obs.shape[1] - self.config.size[1]) // 2
+        x2, y2 = x1 + self.config.size[0], y1 + self.config.size[1]
+        return {
+            "image": _average_pool_image(obs[x1:x2, y1:y2, :].astype(np.uint8)),
+            "reward": np.float32(reward),
+            "is_first": is_first,
+            "is_last": is_last,
+            "is_terminal": is_terminal,
+        }
+
+    def close(self):
+        self._env.close()
+    
+    @abc.abstractmethod
+    def reward(self, obs):
+        pass
+
+    @abc.abstractmethod
+    def step(self, action_dict):
+        pass
+
+    @abc.abstractmethod
+    def reset(self):
+        pass
+
+class GoToKitchen(BaseVirtualHome):
+
+    INIT_ROOMS = ["livingroom", "bedroom", "bathroom"]
+
+    def __init__(self, config: VirtualHomeConfig, destination: int = 205):
+        super().__init__(config)
+        self._env.reset(
+            environment_id=self._config.env_id,
+            init_rooms=self.INIT_ROOMS
+        )
+        self.destination = destination
+
+    def reward(self, obs):
+        room = _get_room(obs)
+        if room == self.destination:
+            return 1, True
+        return 0, False
 
     def step(self, action_dict):
         if action_dict["reset"]:
             return self.reset()
-        self.trajectories.pop(0)
-        self.trajectories.append(action_dict["action"])
-        action_dict = {0: ACTIONS[action_dict["action"]]}
-        f1.write(f"{action_dict[0]}\n")
-        self._env.step(action_dict)
-        obs_full = self._env.get_observation(AGENT_ID, "full")
-        reward, self._done = self.reward(obs_full)
-        f2.write(f"{reward} {self._done}\n")
-        obs_image = self._env.get_observation(AGENT_ID, "image")
-        return self._obs(obs_image, reward, 0, reward, False, False, self._done)
+        self._env.step({0: ACTIONS[action_dict["action"]]})
+        self.episode += 1
+        graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
+        reward, done = self.reward(graph)
+        return self._obs(
+            image=image,
+            reward=reward,
+            is_first=False,
+            is_last=False,
+            is_terminal=done
+        )
 
-    def _obs(self, obs, reward, avoid_reward, investigate_reward,
-             is_first, is_last, is_terminal, ultra_sonic_sensor = np.zeros((6,))):
-        x1, y1 = (obs.shape[0] - CROP_SIZE) // 2, (obs.shape[1] - CROP_SIZE) // 2
-        x2, y2 = x1 + CROP_SIZE, y1 + CROP_SIZE
-        return {
-            "image": _average_pool_image(obs[x1:x2, y1:y2, :].astype(np.uint8)),
-            "reward": np.float32(reward),
-            "avoid_reward": np.float32(avoid_reward),
-            "investigate_reward": np.float32(investigate_reward),
-            "is_first": is_first,
-            "is_last": is_last,
-            "is_terminal": is_terminal,
-            "ultra_sonic_sensor": ultra_sonic_sensor
+    def reset(self):
+        self._env.reset(
+            environment_id=self._config.env_id,
+            init_rooms=self.INIT_ROOMS
+        )
+        self.episode = 0
+        return self._obs(
+            image=self._env.get_observation(AGENT_ID, "image"),
+            reward=0,
+            is_first=True,
+            is_last=False,
+            is_terminal=False
+        )
+
+class LeaveRoom(BaseVirtualHome):
+    def __init__(self, config: VirtualHomeConfig):
+        super().__init__(config)
+        self._env.reset(environment_id=self._config.env_id)
+        self.state = {
+            "room": _get_room(self._env.get_observation(AGENT_ID, "full"))
         }
 
-    def reset(self, env_id=None):
-        if env_id is not None:
-            self.config.env_id = env_id
-        self._env.reset(
-            environment_id=self.config.env_id,
-            init_rooms=["livingroom", "bathroom", "bedroom"]
+    def reward(self, obs):
+        current_room = _get_room(obs)
+        if current_room != self.state["room"]:
+            return 1, True
+        return 0, False
+
+    def step(self, action_dict):
+        if action_dict["reset"]:
+            return self.reset()
+        self._env.step({0: ACTIONS[action_dict["action"]]})
+        self.episode += 1
+        graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
+        reward, done = self.reward(graph)
+        self.state["room"] = _get_room(graph)
+        return self._obs(
+            image=image,
+            reward=reward,
+            is_first=False,
+            is_last=False,
+            is_terminal=done
         )
-        self._done = False
-        self._episode = 0
-        return self._obs(self._env.get_observation(AGENT_ID, "image"), 0, 0, 0, True, False, False)
 
-    def close(self):
-        self._env.close()
+    def reset(self):
+        self._env.reset(environment_id=self._config.env_id)
+        self.state["room"] = _get_room(self._env.get_observation(AGENT_ID, "full"))
+        self.episode = 0
+        return self._obs(
+            image=self._env.get_observation(AGENT_ID, "image"),
+            reward=0,
+            is_first=True,
+            is_last=False,
+            is_terminal=False
+        )
 
-# TASKS (NEED TO FIGURE OUT HOW MANY STEPS)
-# Go to kitchen from room that is randomnly initialized
-# Go to different room from your current room
-# Sweep all rooms (Hard)
-# Scan rooms (go in a circle) (Easy)
-# Find the object
+class SweepAllRooms(BaseVirtualHome):
+
+    def __init__(self, config: VirtualHomeConfig):
+        super().__init__(config)
+        self._env.reset(environment_id=self._config.env_id)
+        self.state = self.init_state()
+    
+    def init_state(self):
+        graph = self._env.get_observation(AGENT_ID, "full")
+        object_ids = set()
+        for room in ROOMS.keys():
+            object_ids.update(SweepAllRooms._objects_in_room(graph, room))
+        return {
+            "objects": {
+                "left": object_ids,
+                "completion": 0,
+                "total": len(object_ids)
+            }
+        }
+
+    def _objects_in_room(obs, room):
+        object_ids = set()
+        for edge in obs["edges"]:
+            if edge["relation_type"] == "INSIDE" \
+                and edge["to_id"] == room \
+                and edge["from_id"] != AGENT_ID + 1:
+                object_ids.add(edge["from_id"])
+        return object_ids
+
+    def reward(self, obs):
+        for edge in obs["edges"]:
+            if edge["relation_type"] == "CLOSE" \
+                and edge["from_id"] == AGENT_ID + 1 \
+                and edge["to_id"] in self.state["objects"]["left"]:
+                self.state["objects"]["left"].remove(edge["to_id"])
+                self.state["objects"]["completion"] = (self.state["objects"]["completion"] + 1) / self.state["objects"]["total"]
+        return self.state["objects"]["completion"], self.state["objects"]["completion"] >= 0.975
+    
+    def step(self, action_dict):
+        if action_dict["reset"]:
+            return self.reset()
+        self._env.step({0: ACTIONS[action_dict["action"]]})
+        self.episode += 1
+        graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
+        reward, done = self.reward(graph)
+        return self._obs(
+            image=image,
+            reward=reward,
+            is_first=False,
+            is_last=False,
+            is_terminal=done
+        )
+
+    def reset(self):
+        self._env.reset(environment_id=self._config.env_id)
+        self.state = self.init_state()
+        self.episode = 0
+        return self._obs(
+            image=self._env.get_observation(AGENT_ID, "image"),
+            reward=0,
+            is_first=True,
+            is_last=False,
+            is_terminal=False
+        )
+
+class ScanRooms(BaseVirtualHome):
+
+    def __init__(self, config: VirtualHomeConfig):
+        super().__init__(config)
+        self._env.reset(environment_id=self._config.env_id)
+        self.state = self.init_state()
+
+    def init_state(self):
+        return {
+            "actions": []
+        }
+    
+    def reward(self, obs):
+        if self.state["actions"] == [0] * 12 or self.state["actions"] == [2] * 12:
+            return 1, True
+        i = 0
+        clefts, mlefts = 0, 0
+        crights, mrights = 0, 0
+        while i < len(self.state["actions"]):
+            if self.state["actions"][i] == 0:
+                crights = 0
+                clefts += 1
+                mlefts = max(mlefts, clefts)
+            elif self.state["actions"][i] == 2:
+                clefts = 0
+                crights += 1
+                mrights = max(mrights, crights)
+            else:
+                clefts = 0
+                crights = 0
+            i += 1
+        rotation = max(mlefts, mrights) / 12
+        return rotation, False
+    
+    def step(self, action_dict):
+        if action_dict["reset"]:
+            return self.reset()
+        self._env.step({0: ACTIONS[action_dict["action"]]})
+        self.episode += 1
+        self.state["actions"].append(action_dict["action"])
+        if len(self.state["actions"]) > 12:
+            self.state["actions"].pop(0)
+        graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
+        reward, done = self.reward(graph)
+        return self._obs(
+            image=image,
+            reward=reward,
+            is_first=False,
+            is_last=False,
+            is_terminal=done
+        )
+    
+    def reset(self):
+        self._env.reset(environment_id=self._config.env_id)
+        self.state = self.init_state()
+        self.episode = 0
+        return self._obs(
+            image=self._env.get_observation(AGENT_ID, "image"),
+            reward=0,
+            is_first=True,
+            is_last=False,
+            is_terminal=False
+        )
+
+class FindObject(BaseVirtualHome):
+
+    def __init__(self, config: VirtualHomeConfig):
+        super().__init__(config)
+        self._env.reset(environment_id=self._config.env_id)
+        self.rug_ids = FindObject._get_objects(self._env.get_observation(AGENT_ID, "full"), "rug")
+    
+    def _get_objects(self, obs, class_name):
+        object_ids = set()
+        for node in obs["nodes"]:
+            if node["class_name"] == class_name:
+                object_ids.add(node["id"])
+        return object_ids
+    
+    def reward(self, obs):
+        for edge in obs["edges"]:
+            if edge["relation_type"] == "ON" \
+                and edge["from_id"] == AGENT_ID + 1 \
+                and edge["to_id"] in self.rug_ids:
+                return 1, True
+        return 0, False
+    
+    def step(self, action_dict):
+        if action_dict["reset"]:
+            return self.reset()
+        self._env.step({0: ACTIONS[action_dict["action"]]})
+        self.episode += 1
+        graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
+        reward, done = self.reward(graph)
+        return self._obs(
+            image=image,
+            reward=reward,
+            is_first=False,
+            is_last=False,
+            is_terminal=done
+        )
+    
+    def reset(self):
+        self._env.reset(environment_id=self._config.env_id)
+        self.rug_ids = FindObject._get_objects(self._env.get_observation(AGENT_ID, "full"), "rug")
+        self.episode = 0
+        return self._obs(
+            image=self._env.get_observation(AGENT_ID, "image"),
+            reward=0,
+            is_first=True,
+            is_last=False,
+            is_terminal=False
+        )
+
 
 # SENSOR CHANGES
 # Randomly dropping frames to the agent
