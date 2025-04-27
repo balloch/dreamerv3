@@ -52,7 +52,7 @@ def main():
     from embodied.envs import vihome
 
     configv2 = vihome.VirtualHomeConfig()
-    env = vihome.VirtualHome(configv2)
+    env = vihome.GoToKitchen(configv2)
     
     return env
 
