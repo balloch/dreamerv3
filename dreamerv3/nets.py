@@ -451,7 +451,7 @@ class SeparateEncoder(nj.Module): #
         x = x.reshape((-1, *x.shape[bdims:]))
         for i, depth in enumerate(self.depths):
           stride = 1 if self.outer and i == 0 else 2
-          x = self.get(f'conv_{vec_key}_{i}', Conv2D, depth, self.kernel, stride, **kw)(x)
+          x = self.get(f'conv_{img_key}_{i}', Conv2D, depth, self.kernel, stride, **kw)(x)
         assert x.shape[-3] == x.shape[-2] == self.minres, x.shape
         x = x.reshape((x.shape[0], -1))
         print(x.shape, 'out')
