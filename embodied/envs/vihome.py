@@ -4,6 +4,8 @@ from virtualhome.simulation.environment.unity_environment import UnityEnvironmen
 import numpy as np
 import embodied
 import abc
+from pathlib import Path
+
 NUM_ACTIONS = 3
 ROOMS = {
     205: "kitchen",
@@ -20,6 +22,10 @@ ACTIONS = {
 CROP_SIZE = 256
 POOL_SIZE = 64
 DISTANCE_THRESHOLD = 0.5
+
+EXEC_DIR = str(Path(__file__).parent.parent.parent.parent / "linux_exec_v2.2.4" / "linux_exec_v2.2.4.x86_64")
+
+f = open("rewards.txt", "w")
 
 @dataclass
 class VirtualHomeConfig:
@@ -55,6 +61,7 @@ def _get_room(obs):
 
 class BaseVirtualHome(embodied.Env, abc.ABC):
     def __init__(self, config: VirtualHomeConfig):
+        print(EXEC_DIR)
         self._config = config
         self._env = UnityEnvironment(
             base_port=config.base_port,
@@ -63,6 +70,10 @@ class BaseVirtualHome(embodied.Env, abc.ABC):
             num_agents=config.num_agents,
             observation_types=[config.obs_type] * config.num_agents,
             seed=42,
+            executable_args={
+                # "file_name": EXEC_DIR,
+                # "no_graphics": True,
+            }
         )
         self.episode = 0
 
@@ -74,7 +85,7 @@ class BaseVirtualHome(embodied.Env, abc.ABC):
     @property
     def obs_space(self):
         return {
-            "image": embodied.Space(np.uint8, shape=self.size),
+            "image": embodied.Space(np.uint8, shape=self._config.size),
             "reward": embodied.Space(np.float32),
             "is_first": embodied.Space(bool),
             "is_last": embodied.Space(bool),
@@ -89,8 +100,9 @@ class BaseVirtualHome(embodied.Env, abc.ABC):
         }
 
     def _obs(self, obs, reward, is_first, is_last, is_terminal):
-        x1, y1 = (obs.shape[0] - self.config.size[0]) // 2, (obs.shape[1] - self.config.size[1]) // 2
-        x2, y2 = x1 + self.config.size[0], y1 + self.config.size[1]
+        f.write(f"reward: {reward}, is_first: {is_first}, is_last: {is_last}, is_terminal: {is_terminal}\n")
+        x1, y1 = (obs.shape[0] - CROP_SIZE) // 2, (obs.shape[1] - CROP_SIZE) // 2
+        x2, y2 = x1 + CROP_SIZE, y1 + CROP_SIZE
         return {
             "image": _average_pool_image(obs[x1:x2, y1:y2, :].astype(np.uint8)),
             "reward": np.float32(reward),
@@ -140,7 +152,7 @@ class GoToKitchen(BaseVirtualHome):
         graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
         reward, done = self.reward(graph)
         return self._obs(
-            image=image,
+            obs=image,
             reward=reward,
             is_first=False,
             is_last=False,
@@ -154,7 +166,7 @@ class GoToKitchen(BaseVirtualHome):
         )
         self.episode = 0
         return self._obs(
-            image=self._env.get_observation(AGENT_ID, "image"),
+            obs=self._env.get_observation(AGENT_ID, "image"),
             reward=0,
             is_first=True,
             is_last=False,
@@ -184,7 +196,7 @@ class LeaveRoom(BaseVirtualHome):
         reward, done = self.reward(graph)
         self.state["room"] = _get_room(graph)
         return self._obs(
-            image=image,
+            obs=image,
             reward=reward,
             is_first=False,
             is_last=False,
@@ -196,7 +208,7 @@ class LeaveRoom(BaseVirtualHome):
         self.state["room"] = _get_room(self._env.get_observation(AGENT_ID, "full"))
         self.episode = 0
         return self._obs(
-            image=self._env.get_observation(AGENT_ID, "image"),
+            obs=self._env.get_observation(AGENT_ID, "image"),
             reward=0,
             is_first=True,
             is_last=False,
@@ -238,7 +250,10 @@ class SweepAllRooms(BaseVirtualHome):
                 and edge["from_id"] == AGENT_ID + 1 \
                 and edge["to_id"] in self.state["objects"]["left"]:
                 self.state["objects"]["left"].remove(edge["to_id"])
-                self.state["objects"]["completion"] = (self.state["objects"]["completion"] + 1) / self.state["objects"]["total"]
+                total = self.state["objects"]["total"]
+                left = len(self.state["objects"]["left"])
+                completion = (total - left) / total
+                self.state["objects"]["completion"] = completion
         return self.state["objects"]["completion"], self.state["objects"]["completion"] >= 0.975
     
     def step(self, action_dict):
@@ -249,7 +264,7 @@ class SweepAllRooms(BaseVirtualHome):
         graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
         reward, done = self.reward(graph)
         return self._obs(
-            image=image,
+            obs=image,
             reward=reward,
             is_first=False,
             is_last=False,
@@ -261,7 +276,7 @@ class SweepAllRooms(BaseVirtualHome):
         self.state = self.init_state()
         self.episode = 0
         return self._obs(
-            image=self._env.get_observation(AGENT_ID, "image"),
+            obs=self._env.get_observation(AGENT_ID, "image"),
             reward=0,
             is_first=True,
             is_last=False,
@@ -313,7 +328,7 @@ class ScanRooms(BaseVirtualHome):
         graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
         reward, done = self.reward(graph)
         return self._obs(
-            image=image,
+            obs=image,
             reward=reward,
             is_first=False,
             is_last=False,
@@ -325,7 +340,7 @@ class ScanRooms(BaseVirtualHome):
         self.state = self.init_state()
         self.episode = 0
         return self._obs(
-            image=self._env.get_observation(AGENT_ID, "image"),
+            obs=self._env.get_observation(AGENT_ID, "image"),
             reward=0,
             is_first=True,
             is_last=False,
@@ -362,7 +377,7 @@ class FindObject(BaseVirtualHome):
         graph, image = self._env.get_observation(AGENT_ID, "full"), self._env.get_observation(AGENT_ID, "image")
         reward, done = self.reward(graph)
         return self._obs(
-            image=image,
+            obs=image,
             reward=reward,
             is_first=False,
             is_last=False,
@@ -374,7 +389,7 @@ class FindObject(BaseVirtualHome):
         self.rug_ids = FindObject._get_objects(self._env.get_observation(AGENT_ID, "full"), "rug")
         self.episode = 0
         return self._obs(
-            image=self._env.get_observation(AGENT_ID, "image"),
+            obs=self._env.get_observation(AGENT_ID, "image"),
             reward=0,
             is_first=True,
             is_last=False,
