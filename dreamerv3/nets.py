@@ -447,7 +447,7 @@ class SeparateEncoder(nj.Module): #
       print('ENC')
       for img_key in self.imgkeys:
         print(img_key)
-        x = Input(self.imgkeys, featdims=3)(data, bdims, jaxutils.COMPUTE_DTYPE) - .5 #self.imginp(data, bdims, jaxutils.COMPUTE_DTYPE) - 0.5
+        x = Input(img_key, featdims=3)(data, bdims, jaxutils.COMPUTE_DTYPE) - .5 #self.imginp(data, bdims, jaxutils.COMPUTE_DTYPE) - 0.5
         x = x.reshape((-1, *x.shape[bdims:]))
         for i, depth in enumerate(self.depths):
           stride = 1 if self.outer and i == 0 else 2
