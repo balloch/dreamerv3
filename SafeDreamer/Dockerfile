@@ -80,3 +80,4 @@ RUN chown -R 1000:root .
 ENTRYPOINT ["sh", "entrypoint.sh"]
 # docker build -f Dockerfile -t img . && docker run --gpus all -it --rm -v ~/logdir/docker:/logdir img /venv/bin/python blimp_example_eval.py
 # docker build -f Dockerfile -t img . && docker run --gpus all -it --rm -v ~/logdir/docker:/logdir img /venv/bin/python SafeDreamer/train.py --configs osrp --method osrp --task safetygym_SafetyPointGoal1-v0 --jax.logical_gpus 0
+# docker build -f Dockerfile -t img . && docker run --gpus all -it --rm -v ~/logdir/docker:/logdir --entrypoint /venv/bin/python img SafeDreamer/train.py --configs osrp --method osrp --task safetygym_SafetyPointGoal1-v0 --jax.logical_gpus 0
